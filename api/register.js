@@ -38,11 +38,11 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: "用户名已存在" })
       }
 
-      await sql`INSERT INTO users (username, password) VALUES (${username}, ${password})`
+      await sql`INSERT INTO users (username, password, admin) VALUES (${username}, ${password}, false)`
 
       await logToPostgreSQL('info', 'register.success', { username })
 
-      return res.status(200).json({ success: true })
+      return res.status(200).json({ success: true, admin: false })
     } catch (e) {
       console.error('Database error:', e)
       return res.status(500).json({ error: "注册失败" })
