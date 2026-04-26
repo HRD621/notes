@@ -54,7 +54,7 @@ export default async function onRequest(context) {
 
     try {
       // 创建用户表（如果不存在）
-      await sql`CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE, password TEXT, created_at TIMESTAMP DEFAULT NOW())`
+      await sql`CREATE TABLE IF NOT EXISTS users (id SERIAL PRIMARY KEY, username TEXT UNIQUE, password TEXT, created_at TIMESTAMP DEFAULT NOW())`
 
       // 检查用户名是否已存在
       const existingUser = await sql`SELECT * FROM users WHERE username = ${username}`.catch(() => null)

@@ -1,7 +1,7 @@
 import { logToD1 } from '../_utils/log'
 import type { PagesFunction } from '../types'
 
-export const onRequestPost: PagesFunction = async ({ request, env }) => {
+export const onRequest: PagesFunction = async ({ request, env }) => {
   if (request.method === 'OPTIONS') {
     return new Response(null, {
       status: 200,
@@ -10,6 +10,16 @@ export const onRequestPost: PagesFunction = async ({ request, env }) => {
         'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
         'Access-Control-Allow-Headers': 'Content-Type, Authorization',
       },
+    })
+  }
+
+  if (request.method !== 'POST') {
+    return new Response(JSON.stringify({ error: 'Method not allowed' }), {
+      status: 405,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*',
+      }
     })
   }
 
