@@ -4,6 +4,7 @@ import { authApi, notesApi, cloudApi, gistApi, r2Api, logsApi } from '@/lib/api'
 import { AlertModal, ConfirmModal, PromptModal, SelectModal } from './Modal'
 import { useModal } from '../hooks/Modal'
 import { loadAndApplyBackground } from '@/lib/webp'
+import ThemeSelector from './ThemeSelector'
 import type { 
   AppSettings, 
   Note,
@@ -1414,6 +1415,11 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
               </div>
 
               <div className="space-y-4">
+                {category.title === '外观设置' && (
+                  <div className="mb-4">
+                    <ThemeSelector />
+                  </div>
+                )}
                 {category.options.map((option, optionIndex) => (
                   <div key={optionIndex} className="flex items-center justify-between">
                     <label htmlFor={option.type === 'input' ? `settings-input-${option.value}` : option.type === 'select' ? `settings-select-${option.value}` : undefined} className="font-medium text-gray-700">

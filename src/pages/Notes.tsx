@@ -54,11 +54,7 @@ const Notes = () => {
 
           const body = document.body
           if (body) {
-            body.style.backgroundImage = "url('/background.webp')"
-            body.style.backgroundSize = 'cover'
-            body.style.backgroundPosition = 'center'
-            body.style.backgroundRepeat = 'no-repeat'
-            body.style.backgroundAttachment = 'fixed'
+            body.style.backgroundImage = ''
           }
         }
       }
@@ -115,7 +111,7 @@ const Notes = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50" style={{ backgroundImage: "var(--app-bg-image, url('/background.webp'))", backgroundSize: 'cover', backgroundPosition: 'center', backgroundAttachment: 'fixed' }}>
+    <div className="min-h-screen bg-gray-50">
 
       <header className="bg-white shadow-sm border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">

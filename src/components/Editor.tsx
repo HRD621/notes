@@ -29,26 +29,12 @@ interface EditorProps {
   value: string
   onChange: (_value: string) => void
   placeholder?: string
-  tags?: string[]
-  onTagsChange?: (_tags: string[]) => void
-  tagInput?: string
-  onTagInputChange?: (_value: string) => void
-  onAddTag?: () => void
-  onRemoveTag?: (_tag: string) => void
-  onTagInputKeyPress?: (_e: React.KeyboardEvent) => void
 }
 
 const Editor: React.FC<EditorProps> = ({ 
   value, 
   onChange, 
-  placeholder = '开始编写您的笔记...',
-  tags = [],
-  onTagsChange: _onTagsChange,
-  tagInput = '',
-  onTagInputChange,
-  onAddTag,
-  onRemoveTag,
-  onTagInputKeyPress
+  placeholder = '开始编写您的笔记...'
 }) => {
   const mdeRef = useRef<{ simpleMde?: SimpleMDEInstance } | null>(null) as React.MutableRefObject<{ simpleMde?: SimpleMDEInstance } | null>
   const [isPreview, setIsPreview] = useState(false)
@@ -129,7 +115,16 @@ const Editor: React.FC<EditorProps> = ({
       const cursor = cm.getCursor()
       
       if (selection) {
-        cm.replaceSelection(before + selection + after)
+        // 检查选中的文本是否已经被标记
+        const isMarked = selection.startsWith(before) && selection.endsWith(after)
+        if (isMarked) {
+          // 如果已经被标记，移除标记
+          const unmarkedText = selection.substring(before.length, selection.length - after.length)
+          cm.replaceSelection(unmarkedText)
+        } else {
+          // 如果没有被标记，添加标记
+          cm.replaceSelection(before + selection + after)
+        }
       } else {
         cm.replaceRange(before + after, cursor)
         const newCursor = {
@@ -150,13 +145,29 @@ const Editor: React.FC<EditorProps> = ({
       if (textarea) {
         const start = textarea.selectionStart
         const end = textarea.selectionEnd
-        const newValue = value.substring(0, start) + before + value.substring(start, end) + after + value.substring(end)
+        const selectedText = value.substring(start, end)
+        
+        // 检查选中的文本是否已经被标记
+        const isMarked = selectedText.startsWith(before) && selectedText.endsWith(after)
+        let newValue
+        
+        if (isMarked) {
+          // 如果已经被标记，移除标记
+          const unmarkedText = selectedText.substring(before.length, selectedText.length - after.length)
+          newValue = value.substring(0, start) + unmarkedText + value.substring(end)
+        } else {
+          // 如果没有被标记，添加标记
+          newValue = value.substring(0, start) + before + selectedText + after + value.substring(end)
+        }
+        
         onChange(newValue)
         
         setTimeout(() => {
           if (textarea) {
+            const newStart = start + (isMarked ? -before.length : before.length)
+            const newEnd = end + (isMarked ? -after.length : after.length)
             textarea.focus()
-            textarea.setSelectionRange(start + before.length, start + before.length)
+            textarea.setSelectionRange(newStart, newEnd)
           }
         }, 0)
       } else {
@@ -453,99 +464,6 @@ const Editor: React.FC<EditorProps> = ({
         flexWrap: 'wrap',
         gap: '12px'
       }}>
-          {onAddTag && onTagInputChange && onTagInputKeyPress && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
-              <label htmlFor="tag-input" className="sr-only">添加标签</label>
-              <input
-                id="tag-input"
-                type="text"
-                value={tagInput}
-                onChange={(e) => onTagInputChange(e.target.value)}
-                onKeyPress={onTagInputKeyPress}
-                placeholder="添加标签..."
-                style={{
-                  background: 'rgba(255, 255, 255, 0.15)',
-                  border: '2px solid rgba(59, 130, 246, 0.6)',
-                  borderRadius: '6px',
-                  padding: '6px 10px',
-                  fontSize: '12px',
-                  color: '#ffffff',
-                  outline: 'none',
-                  width: '120px',
-                  transition: 'all 0.2s ease',
-                  boxShadow: '0 0 0 1px rgba(59, 130, 246, 0.2)'
-                }}
-                onFocus={(e) => {
-                  e.target.style.border = '2px solid rgba(59, 130, 246, 0.8)'
-                  e.target.style.boxShadow = '0 0 0 2px rgba(59, 130, 246, 0.2)'
-                }}
-                onBlur={(e) => {
-                  e.target.style.border = '2px solid rgba(59, 130, 246, 0.6)'
-                  e.target.style.boxShadow = '0 0 0 1px rgba(59, 130, 246, 0.2)'
-                }}
-              />
-              <button
-                onClick={onAddTag}
-                style={{
-                  background: 'rgba(59, 130, 246, 0.2)',
-                  border: '2px solid rgba(59, 130, 246, 0.6)',
-                  borderRadius: '6px',
-                  padding: '6px 10px',
-                  color: '#3b82f6',
-                  cursor: 'pointer',
-                  fontSize: '14px',
-                  fontWeight: 'bold',
-                  transition: 'all 0.2s ease',
-                  minWidth: '32px',
-                  textAlign: 'center',
-                  boxShadow: '0 0 0 1px rgba(59, 130, 246, 0.1)'
-                }}
-              >
-                +
-              </button>
-            </div>
-          )}
-          
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', flex: '1', justifyContent: 'flex-end' }}>
-            {tags && tags.length > 0 && (
-              <>
-                {tags.map((tag, index) => (
-                  <span
-                    key={index}
-                    style={{
-                      background: 'rgba(59, 130, 246, 0.1)',
-                      color: '#3b82f6',
-                      border: '1px solid rgba(59, 130, 246, 0.2)',
-                      borderRadius: '12px',
-                      padding: '2px 8px',
-                      fontSize: '12px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '4px'
-                    }}
-                  >
-                    🏷️ {tag}
-                    {onRemoveTag && (
-                      <button
-                        onClick={() => onRemoveTag(tag)}
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          color: '#3b82f6',
-                          cursor: 'pointer',
-                          padding: '0',
-                          marginLeft: '4px',
-                          fontSize: '12px'
-                        }}
-                      >
-                        ×
-                      </button>
-                    )}
-                  </span>
-                ))}
-              </>
-            )}
-          </div>
       </div>
 
       <div style={{ minHeight: '550px' }}>

@@ -51,11 +51,11 @@ const EditorToolbar: React.FC<EditorToolbarProps> = ({ onInsertText }) => {
 
   const toolbarStyle = {
     ...getToolbarPosition(),
-    background: 'rgba(255,255,255,0.40)',
+    background: 'rgba(255,255,255,0.90)',
     backdropFilter: 'blur(16px)',
     borderRadius: '8px',
     boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06)',
-    border: '1px solid rgba(255,255,255,0.30)',
+    border: '1px solid rgba(200,200,200,0.30)',
     padding: '16px',
     marginLeft: '0px',
     marginRight: '0px',
@@ -77,13 +77,54 @@ const EditorToolbar: React.FC<EditorToolbarProps> = ({ onInsertText }) => {
     display: 'flex',
     alignItems: 'center',
     backgroundColor: 'transparent',
-    color: '#FFFFFF',
+    color: 'var(--text-primary)',
     fontWeight: 'normal',
-    transition: 'none',
+    transition: 'all 0.2s ease',
     cursor: 'pointer',
     border: 'none',
     outline: 'none'
   })
+
+  useEffect(() => {
+    const updateToolbarStyle = () => {
+      const toolbar = document.getElementById('custom-toolbar')
+      if (toolbar) {
+        // 根据当前主题调整工具栏样式
+        const isDark = document.documentElement.classList.contains('theme-dark')
+        const isEyeCare = document.documentElement.classList.contains('theme-eye-care')
+        
+        if (isDark) {
+          toolbar.style.background = 'rgba(30,30,30,0.90)'
+          toolbar.style.borderColor = 'rgba(60,60,60,0.5)'
+          toolbar.style.boxShadow = '0 1px 3px 0 rgba(0, 0, 0, 0.3), 0 1px 2px 0 rgba(0, 0, 0, 0.2)'
+        } else if (isEyeCare) {
+          toolbar.style.background = 'rgba(200,220,200,0.90)'
+          toolbar.style.borderColor = 'rgba(180,200,180,0.5)'
+          toolbar.style.boxShadow = '0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06)'
+        } else {
+          toolbar.style.background = 'rgba(255,255,255,0.90)'
+          toolbar.style.borderColor = 'rgba(200,200,200,0.30)'
+          toolbar.style.boxShadow = '0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06)'
+        }
+      }
+    }
+
+    // 初始更新
+    updateToolbarStyle()
+    
+    // 监听主题变化
+    const observer = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
+          updateToolbarStyle()
+        }
+      })
+    })
+    
+    observer.observe(document.documentElement, { attributes: true })
+    
+    return () => observer.disconnect()
+  }, [])
 
   return (
     <div 
@@ -99,13 +140,13 @@ const EditorToolbar: React.FC<EditorToolbarProps> = ({ onInsertText }) => {
         onClick={() => onInsertText('- [ ] ', '')} 
         style={getButtonStyle()} 
         onMouseEnter={(e) => { 
-          e.currentTarget.style.background = 'rgba(255,255,255,0.3)'; 
-          e.currentTarget.style.color = '#111827'; 
+          e.currentTarget.style.background = 'var(--bg-secondary)'; 
+          e.currentTarget.style.color = 'var(--text-primary)'; 
           e.currentTarget.style.fontWeight = '500'; 
         }} 
         onMouseLeave={(e) => { 
           e.currentTarget.style.background = 'transparent'; 
-          e.currentTarget.style.color = '#FFFFFF'; 
+          e.currentTarget.style.color = 'var(--text-primary)'; 
           e.currentTarget.style.fontWeight = 'normal'; 
         }}
       >
@@ -124,13 +165,13 @@ const EditorToolbar: React.FC<EditorToolbarProps> = ({ onInsertText }) => {
         onClick={() => onInsertText('[', '](url)')} 
         style={getButtonStyle()} 
         onMouseEnter={(e) => { 
-          e.currentTarget.style.background = 'rgba(255,255,255,0.3)'; 
-          e.currentTarget.style.color = '#111827'; 
+          e.currentTarget.style.background = 'var(--bg-secondary)'; 
+          e.currentTarget.style.color = 'var(--text-primary)'; 
           e.currentTarget.style.fontWeight = '500'; 
         }} 
         onMouseLeave={(e) => { 
           e.currentTarget.style.background = 'transparent'; 
-          e.currentTarget.style.color = '#FFFFFF'; 
+          e.currentTarget.style.color = 'var(--text-primary)'; 
           e.currentTarget.style.fontWeight = 'normal'; 
         }}
       >
@@ -149,13 +190,13 @@ const EditorToolbar: React.FC<EditorToolbarProps> = ({ onInsertText }) => {
         onClick={() => onInsertText('![', '](url)')} 
         style={getButtonStyle()} 
         onMouseEnter={(e) => { 
-          e.currentTarget.style.background = 'rgba(255,255,255,0.3)'; 
-          e.currentTarget.style.color = '#111827'; 
+          e.currentTarget.style.background = 'var(--bg-secondary)'; 
+          e.currentTarget.style.color = 'var(--text-primary)'; 
           e.currentTarget.style.fontWeight = '500'; 
         }} 
         onMouseLeave={(e) => { 
           e.currentTarget.style.background = 'transparent'; 
-          e.currentTarget.style.color = '#FFFFFF'; 
+          e.currentTarget.style.color = 'var(--text-primary)'; 
           e.currentTarget.style.fontWeight = 'normal'; 
         }}
       >
@@ -174,13 +215,13 @@ const EditorToolbar: React.FC<EditorToolbarProps> = ({ onInsertText }) => {
         onClick={() => onInsertText('**', '**')} 
         style={getButtonStyle()} 
         onMouseEnter={(e) => { 
-          e.currentTarget.style.background = 'rgba(255,255,255,0.3)'; 
-          e.currentTarget.style.color = '#111827'; 
+          e.currentTarget.style.background = 'var(--bg-secondary)'; 
+          e.currentTarget.style.color = 'var(--text-primary)'; 
           e.currentTarget.style.fontWeight = '500'; 
         }} 
         onMouseLeave={(e) => { 
           e.currentTarget.style.background = 'transparent'; 
-          e.currentTarget.style.color = '#FFFFFF'; 
+          e.currentTarget.style.color = 'var(--text-primary)'; 
           e.currentTarget.style.fontWeight = 'normal'; 
         }}
       >
@@ -199,13 +240,13 @@ const EditorToolbar: React.FC<EditorToolbarProps> = ({ onInsertText }) => {
         onClick={() => onInsertText('*', '*')} 
         style={getButtonStyle()} 
         onMouseEnter={(e) => { 
-          e.currentTarget.style.background = 'rgba(255,255,255,0.3)'; 
-          e.currentTarget.style.color = '#111827'; 
+          e.currentTarget.style.background = 'var(--bg-secondary)'; 
+          e.currentTarget.style.color = 'var(--text-primary)'; 
           e.currentTarget.style.fontWeight = '500'; 
         }} 
         onMouseLeave={(e) => { 
           e.currentTarget.style.background = 'transparent'; 
-          e.currentTarget.style.color = '#FFFFFF'; 
+          e.currentTarget.style.color = 'var(--text-primary)'; 
           e.currentTarget.style.fontWeight = 'normal'; 
         }}
       >
@@ -224,13 +265,13 @@ const EditorToolbar: React.FC<EditorToolbarProps> = ({ onInsertText }) => {
         onClick={() => onInsertText('```\n', '\n```')} 
         style={getButtonStyle()} 
         onMouseEnter={(e) => { 
-          e.currentTarget.style.background = 'rgba(255,255,255,0.3)'; 
-          e.currentTarget.style.color = '#111827'; 
+          e.currentTarget.style.background = 'var(--bg-secondary)'; 
+          e.currentTarget.style.color = 'var(--text-primary)'; 
           e.currentTarget.style.fontWeight = '500'; 
         }} 
         onMouseLeave={(e) => { 
           e.currentTarget.style.background = 'transparent'; 
-          e.currentTarget.style.color = '#FFFFFF'; 
+          e.currentTarget.style.color = 'var(--text-primary)'; 
           e.currentTarget.style.fontWeight = 'normal'; 
         }}
       >
@@ -249,13 +290,13 @@ const EditorToolbar: React.FC<EditorToolbarProps> = ({ onInsertText }) => {
         onClick={() => onInsertText('# ', '')} 
         style={getButtonStyle()} 
         onMouseEnter={(e) => { 
-          e.currentTarget.style.background = 'rgba(255,255,255,0.3)'; 
-          e.currentTarget.style.color = '#111827'; 
+          e.currentTarget.style.background = 'var(--bg-secondary)'; 
+          e.currentTarget.style.color = 'var(--text-primary)'; 
           e.currentTarget.style.fontWeight = '500'; 
         }} 
         onMouseLeave={(e) => { 
           e.currentTarget.style.background = 'transparent'; 
-          e.currentTarget.style.color = '#FFFFFF'; 
+          e.currentTarget.style.color = 'var(--text-primary)'; 
           e.currentTarget.style.fontWeight = 'normal'; 
         }}
       >
@@ -274,13 +315,13 @@ const EditorToolbar: React.FC<EditorToolbarProps> = ({ onInsertText }) => {
         onClick={() => onInsertText('## ', '')} 
         style={getButtonStyle()} 
         onMouseEnter={(e) => { 
-          e.currentTarget.style.background = 'rgba(255,255,255,0.3)'; 
-          e.currentTarget.style.color = '#111827'; 
+          e.currentTarget.style.background = 'var(--bg-secondary)'; 
+          e.currentTarget.style.color = 'var(--text-primary)'; 
           e.currentTarget.style.fontWeight = '500'; 
         }} 
         onMouseLeave={(e) => { 
           e.currentTarget.style.background = 'transparent'; 
-          e.currentTarget.style.color = '#FFFFFF'; 
+          e.currentTarget.style.color = 'var(--text-primary)'; 
           e.currentTarget.style.fontWeight = 'normal'; 
         }}
       >
@@ -299,13 +340,13 @@ const EditorToolbar: React.FC<EditorToolbarProps> = ({ onInsertText }) => {
         onClick={() => onInsertText('### ', '')} 
         style={getButtonStyle()} 
         onMouseEnter={(e) => { 
-          e.currentTarget.style.background = 'rgba(255,255,255,0.3)'; 
-          e.currentTarget.style.color = '#111827'; 
+          e.currentTarget.style.background = 'var(--bg-secondary)'; 
+          e.currentTarget.style.color = 'var(--text-primary)'; 
           e.currentTarget.style.fontWeight = '500'; 
         }} 
         onMouseLeave={(e) => { 
           e.currentTarget.style.background = 'transparent'; 
-          e.currentTarget.style.color = '#FFFFFF'; 
+          e.currentTarget.style.color = 'var(--text-primary)'; 
           e.currentTarget.style.fontWeight = 'normal'; 
         }}
       >
@@ -324,13 +365,13 @@ const EditorToolbar: React.FC<EditorToolbarProps> = ({ onInsertText }) => {
         onClick={() => onInsertText('~~', '~~')} 
         style={getButtonStyle()} 
         onMouseEnter={(e) => { 
-          e.currentTarget.style.background = 'rgba(255,255,255,0.3)'; 
-          e.currentTarget.style.color = '#111827'; 
+          e.currentTarget.style.background = 'var(--bg-secondary)'; 
+          e.currentTarget.style.color = 'var(--text-primary)'; 
           e.currentTarget.style.fontWeight = '500'; 
         }} 
         onMouseLeave={(e) => { 
           e.currentTarget.style.background = 'transparent'; 
-          e.currentTarget.style.color = '#FFFFFF'; 
+          e.currentTarget.style.color = 'var(--text-primary)'; 
           e.currentTarget.style.fontWeight = 'normal'; 
         }}
       >
@@ -349,13 +390,13 @@ const EditorToolbar: React.FC<EditorToolbarProps> = ({ onInsertText }) => {
         onClick={() => onInsertText('> ', '')} 
         style={getButtonStyle()} 
         onMouseEnter={(e) => { 
-          e.currentTarget.style.background = 'rgba(255,255,255,0.3)'; 
-          e.currentTarget.style.color = '#111827'; 
+          e.currentTarget.style.background = 'var(--bg-secondary)'; 
+          e.currentTarget.style.color = 'var(--text-primary)'; 
           e.currentTarget.style.fontWeight = '500'; 
         }} 
         onMouseLeave={(e) => { 
           e.currentTarget.style.background = 'transparent'; 
-          e.currentTarget.style.color = '#FFFFFF'; 
+          e.currentTarget.style.color = 'var(--text-primary)'; 
           e.currentTarget.style.fontWeight = 'normal'; 
         }}
       >
@@ -374,13 +415,13 @@ const EditorToolbar: React.FC<EditorToolbarProps> = ({ onInsertText }) => {
         onClick={() => onInsertText('- ', '')} 
         style={getButtonStyle()} 
         onMouseEnter={(e) => { 
-          e.currentTarget.style.background = 'rgba(255,255,255,0.3)'; 
-          e.currentTarget.style.color = '#111827'; 
+          e.currentTarget.style.background = 'var(--bg-secondary)'; 
+          e.currentTarget.style.color = 'var(--text-primary)'; 
           e.currentTarget.style.fontWeight = '500'; 
         }} 
         onMouseLeave={(e) => { 
           e.currentTarget.style.background = 'transparent'; 
-          e.currentTarget.style.color = '#FFFFFF'; 
+          e.currentTarget.style.color = 'var(--text-primary)'; 
           e.currentTarget.style.fontWeight = 'normal'; 
         }}
       >
@@ -399,13 +440,13 @@ const EditorToolbar: React.FC<EditorToolbarProps> = ({ onInsertText }) => {
         onClick={() => onInsertText('1. ', '')} 
         style={getButtonStyle()} 
         onMouseEnter={(e) => { 
-          e.currentTarget.style.background = 'rgba(255,255,255,0.3)'; 
-          e.currentTarget.style.color = '#111827'; 
+          e.currentTarget.style.background = 'var(--bg-secondary)'; 
+          e.currentTarget.style.color = 'var(--text-primary)'; 
           e.currentTarget.style.fontWeight = '500'; 
         }} 
         onMouseLeave={(e) => { 
           e.currentTarget.style.background = 'transparent'; 
-          e.currentTarget.style.color = '#FFFFFF'; 
+          e.currentTarget.style.color = 'var(--text-primary)'; 
           e.currentTarget.style.fontWeight = 'normal'; 
         }}
       >

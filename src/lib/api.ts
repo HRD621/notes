@@ -17,8 +17,8 @@ interface ImportMetaEnv {
 }
 
 export const api = axios.create({
-  baseURL: (import.meta as { env?: ImportMetaEnv }).env?.VITE_API_BASE || '',
-  timeout: 10000,
+  baseURL: (import.meta as { env?: ImportMetaEnv }).env?.VITE_API_BASE || (import.meta.env.DEV ? 'http://localhost:3000' : ''),
+  timeout: 5000,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -26,9 +26,18 @@ export const api = axios.create({
 
 api.interceptors.request.use(
   (config) => {
+    // 登录和注册请求不添加Authorization头
+    if (config.url?.includes('/api/login') || config.url?.includes('/api/register')) {
+      return config
+    }
+    
     const password = localStorage.getItem('password')
+    const username = localStorage.getItem('username')
     if (password) {
       config.headers.Authorization = `Bearer ${password}`
+    }
+    if (username) {
+      config.headers['x-username'] = username
     }
     return config
   },
@@ -62,6 +71,8 @@ api.interceptors.response.use(
 export const notesApi = {
   getNotes: (): Promise<AxiosResponse<Note[]>> => api.get('/api/notes'),
   
+  getNotesByUser: (userId: number): Promise<AxiosResponse<Note[]>> => api.get(`/api/notes?userId=${userId}`),
+  
   getNote: (id: string): Promise<AxiosResponse<Note>> => api.get(`/api/notes/${id}`),
   
   createNote: (note: NoteCreateRequest): Promise<AxiosResponse<ApiResponse<{ id: string }>>> => 
@@ -78,6 +89,8 @@ export const notesApi = {
 
   updateNotes: (content: string): Promise<AxiosResponse<ApiResponse>> => 
     api.post('/api/notes', { content }),
+  
+  getUsers: (): Promise<AxiosResponse<any[]>> => api.get('/api/admin/users'),
 }
 
 export const authApi = {

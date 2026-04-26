@@ -1,4 +1,5 @@
-﻿import express from 'express'
+﻿﻿﻿﻿import 'dotenv/config'
+import express from 'express'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { existsSync } from 'fs'
@@ -29,11 +30,27 @@ if (!DATABASE_URL) {
 const pool = new Pool({
   connectionString: DATABASE_URL,
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+  max: 20,
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 10000,
 })
 
 const app = express()
 
 app.set('trust proxy', true)
+
+// CORS 中间件
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*')
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, X-Username')
+  
+  if (req.method === 'OPTIONS') {
+    res.sendStatus(200)
+  } else {
+    next()
+  }
+})
 
 app.use(express.json())
 
@@ -42,8 +59,19 @@ app.use(express.urlencoded({ extended: true }))
 async function initDatabase() {
   try {
     await pool.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
+        username TEXT UNIQUE NOT NULL,
+        password TEXT NOT NULL,
+        admin BOOLEAN DEFAULT false,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `)
+    
+    await pool.query(`
       CREATE TABLE IF NOT EXISTS notes (
         id TEXT PRIMARY KEY,
+        user_id INTEGER REFERENCES users(id),
         title TEXT,
         content TEXT,
         tags TEXT,
@@ -51,6 +79,24 @@ async function initDatabase() {
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `)
+    
+    // 添加user_id列（如果不存在）
+    try {
+      await pool.query(`
+        ALTER TABLE notes ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id)
+      `)
+    } catch (e) {
+      console.error('添加user_id列失败:', e)
+    }
+    
+    // 添加admin字段到现有表
+    try {
+      await pool.query(`
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS admin BOOLEAN DEFAULT false
+      `)
+    } catch (e) {
+      console.error('添加admin列失败:', e)
+    }
     
     await pool.query(`
       CREATE TABLE IF NOT EXISTS logs (
@@ -79,23 +125,37 @@ async function initDatabase() {
     `)
     
     console.warn('[服务器] 数据库表已初始化')
+    
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_notes_user_id ON notes(user_id)`)
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_notes_updated_at ON notes(updated_at)`)
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_users_created_at ON users(created_at)`)
+    console.warn('[服务器] 数据库索引已创建')
   } catch (e) {
     console.error('[服务器] 数据库初始化失败:', e)
     throw e
   }
 }
 
-function authMiddleware(req, res, next) {
+async function authMiddleware(req, res, next) {
   const auth = req.headers.authorization || ''
-  if (!PASSWORD) return next()
-  if (!auth.startsWith('Bearer ')) {
+  const username = req.headers['x-username'] || ''
+  
+  if (!username) {
     return res.status(401).json({ success: false, error: '未授权' })
   }
-  const token = auth.slice('Bearer '.length)
-  if (token !== PASSWORD) {
+  
+  try {
+    const result = await pool.query('SELECT * FROM users WHERE username = $1', [username])
+    if (result.rows.length === 0) {
+      return res.status(401).json({ success: false, error: '未授权' })
+    }
+    
+    req.user = result.rows[0]
+    next()
+  } catch (e) {
+    console.error('认证错误:', e)
     return res.status(401).json({ success: false, error: '未授权' })
   }
-  next()
 }
 
 function cleanIP(ip) {
@@ -143,9 +203,24 @@ async function appendLog(level, message, meta) {
   }
 }
 
-async function getAllNotes() {
+async function getAllNotes(userId, admin = false, targetUserId = null) {
   try {
-    const result = await pool.query('SELECT * FROM notes ORDER BY updated_at DESC')
+    let query = 'SELECT * FROM notes '
+    let params = []
+    
+    if (targetUserId && admin) {
+      // 管理员按特定用户ID获取笔记
+      query += 'WHERE user_id = $1 '
+      params = [targetUserId]
+    } else {
+      // 普通用户或管理员获取自己的笔记
+      query += 'WHERE user_id = $1 '
+      params = [userId]
+    }
+    
+    query += 'ORDER BY updated_at DESC'
+    
+    const result = await pool.query(query, params)
     return result.rows.map(row => ({
       id: row.id,
       title: row.title || '',
@@ -153,9 +228,41 @@ async function getAllNotes() {
       tags: safeJsonParse(row.tags, []),
       createdAt: row.created_at?.toISOString() || new Date().toISOString(),
       updatedAt: row.updated_at?.toISOString() || new Date().toISOString(),
+      userId: row.user_id
     }))
   } catch (e) {
     console.error('获取笔记失败:', e)
+    return []
+  }
+}
+
+async function getNotesList(userId, admin = false, targetUserId = null) {
+  try {
+    let query = 'SELECT id, title, updated_at, user_id FROM notes '
+    let params = []
+    let paramIndex = 1
+    
+    if (targetUserId && admin) {
+      // 管理员按特定用户ID获取笔记
+      query += 'WHERE user_id = $' + paramIndex++ + ' '
+      params.push(targetUserId)
+    } else {
+      // 普通用户或管理员获取自己的笔记
+      query += 'WHERE user_id = $' + paramIndex++ + ' '
+      params.push(userId)
+    }
+    
+    query += 'ORDER BY updated_at DESC'
+    
+    const result = await pool.query(query, params)
+    return result.rows.map(row => ({
+      id: row.id,
+      title: row.title || '',
+      updatedAt: row.updated_at?.toISOString() || new Date().toISOString(),
+      userId: row.user_id
+    }))
+  } catch (e) {
+    console.error('获取笔记列表失败:', e)
     return []
   }
 }
@@ -204,18 +311,103 @@ app.get('/api/test-logs', authMiddleware, async (req, res) => {
 })
 
 app.post('/api/login', async (req, res) => {
-  const { password } = req.body || {}
-  if (!PASSWORD || password === PASSWORD) {
-    await appendLog('info', '用户登录成功', `IP: ${cleanIP(req.ip)}`)
-    return res.json({ success: true })
+  const { username, password } = req.body || {}
+  
+  try {
+    const result = await pool.query('SELECT * FROM users WHERE username = $1', [username])
+    
+    if (result.rows.length === 0) {
+      await appendLog('warn', '用户登录失败', `IP: ${cleanIP(req.ip)}, 原因: 用户不存在`)
+      return res.status(401).json({ success: false, error: '用户名或密码错误' })
+    }
+    
+    const user = result.rows[0]
+    if (user.password !== password) {
+      await appendLog('warn', '用户登录失败', `IP: ${cleanIP(req.ip)}, 原因: 密码错误`)
+      return res.status(401).json({ success: false, error: '用户名或密码错误' })
+    }
+    
+    await appendLog('info', '用户登录成功', `IP: ${cleanIP(req.ip)}, 用户名: ${username}`)
+    res.json({ success: true, admin: user.admin || false })
+  } catch (e) {
+    console.error('登录错误:', e)
+    await appendLog('error', '登录错误', `IP: ${cleanIP(req.ip)}, 错误: ${String(e)}`)
+    res.status(500).json({ success: false, error: '登录失败' })
   }
-  await appendLog('warn', '用户登录失败', `IP: ${cleanIP(req.ip)}, 原因: 密码错误`)
-  res.status(401).json({ success: false, error: '密码无效' })
+})
+
+// 设置用户管理员权限（仅用于初始化）
+app.post('/api/admin/set', async (req, res) => {
+  const { username, admin } = req.body || {}
+  
+  try {
+    await pool.query('UPDATE users SET admin = $1 WHERE username = $2', [admin, username])
+    await appendLog('info', '设置管理员权限', `用户名: ${username}, 管理员: ${admin}`)
+    res.json({ success: true })
+  } catch (e) {
+    console.error('设置管理员权限错误:', e)
+    res.status(500).json({ success: false, error: '设置失败' })
+  }
+})
+
+// 获取所有用户（仅管理员）
+app.get('/api/admin/users', authMiddleware, async (req, res) => {
+  try {
+    if (!req.user.admin) {
+      return res.status(403).json({ success: false, error: '权限不足' })
+    }
+    
+    const result = await pool.query('SELECT id, username, admin, created_at FROM users ORDER BY created_at DESC')
+    const users = result.rows.map(row => ({
+      id: row.id,
+      username: row.username,
+      admin: row.admin || false,
+      createdAt: row.created_at?.toISOString() || new Date().toISOString()
+    }))
+    
+    res.json(users)
+  } catch (e) {
+    console.error('获取用户列表错误:', e)
+    res.status(500).json({ success: false, error: '获取用户列表失败' })
+  }
+})
+
+app.post('/api/register', async (req, res) => {
+  const { username, password } = req.body || {}
+  
+  if (!username || !password) {
+    return res.status(400).json({ success: false, error: '用户名和密码不能为空' })
+  }
+  
+  try {
+    const existingUser = await pool.query('SELECT * FROM users WHERE username = $1', [username])
+    if (existingUser.rows.length > 0) {
+      return res.status(400).json({ success: false, error: '用户名已存在' })
+    }
+    
+    await pool.query('INSERT INTO users (username, password) VALUES ($1, $2)', [username, password])
+    await appendLog('info', '用户注册成功', `IP: ${cleanIP(req.ip)}, 用户名: ${username}`)
+    res.json({ success: true })
+  } catch (e) {
+    console.error('注册错误:', e)
+    await appendLog('error', '注册错误', `IP: ${cleanIP(req.ip)}, 错误: ${String(e)}`)
+    res.status(500).json({ success: false, error: '注册失败' })
+  }
 })
 
 app.get('/api/notes', authMiddleware, async (req, res) => {
   try {
-    const notes = await getAllNotes()
+    const { userId } = req.query
+    let notes
+    
+    if (userId && req.user.admin) {
+      // 管理员按用户ID获取笔记
+      notes = await getNotesList(req.user.id, true, parseInt(userId))
+    } else {
+      // 普通用户或管理员获取自己的笔记
+      notes = await getNotesList(req.user.id, req.user.admin || false)
+    }
+    
     res.json(notes)
   } catch (e) {
     await appendLog('error', '获取笔记失败', { error: String(e) })
@@ -226,7 +418,7 @@ app.get('/api/notes', authMiddleware, async (req, res) => {
 app.get('/api/notes/:id', authMiddleware, async (req, res) => {
   try {
     const id = req.params.id
-    const result = await pool.query('SELECT * FROM notes WHERE id = $1', [id])
+    const result = await pool.query('SELECT * FROM notes WHERE id = $1 AND user_id = $2', [id, req.user.id])
     
     if (result.rows.length === 0) {
       return res.status(404).json({ success: false, error: '未找到' })
@@ -263,14 +455,14 @@ app.post('/api/notes', authMiddleware, async (req, res) => {
     }
     
     await pool.query(
-      `INSERT INTO notes (id, title, content, tags, created_at, updated_at) 
-       VALUES ($1, $2, $3, $4, $5, $6)
+      `INSERT INTO notes (id, user_id, title, content, tags, created_at, updated_at) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
        ON CONFLICT (id) DO UPDATE SET
        title = EXCLUDED.title,
        content = EXCLUDED.content,
        tags = EXCLUDED.tags,
        updated_at = EXCLUDED.updated_at`,
-      [note.id, note.title, note.content, JSON.stringify(note.tags), note.createdAt, note.updatedAt]
+      [note.id, req.user.id, note.title, note.content, JSON.stringify(note.tags), note.createdAt, note.updatedAt]
     )
     
   await appendLog('info', '笔记已创建/更新', { id })
@@ -286,7 +478,7 @@ app.put('/api/notes/:id', authMiddleware, async (req, res) => {
     const id = req.params.id
     const body = req.body || {}
     
-    const existing = await pool.query('SELECT * FROM notes WHERE id = $1', [id])
+    const existing = await pool.query('SELECT * FROM notes WHERE id = $1 AND user_id = $2', [id, req.user.id])
     if (existing.rows.length === 0) {
       return res.status(404).json({ success: false, error: '笔记未找到' })
     }
@@ -302,8 +494,8 @@ app.put('/api/notes/:id', authMiddleware, async (req, res) => {
     }
     
     await pool.query(
-      'UPDATE notes SET title = $1, content = $2, tags = $3, updated_at = $4 WHERE id = $5',
-      [note.title, note.content, JSON.stringify(note.tags), note.updatedAt, note.id]
+      'UPDATE notes SET title = $1, content = $2, tags = $3, updated_at = $4 WHERE id = $5 AND user_id = $6',
+      [note.title, note.content, JSON.stringify(note.tags), note.updatedAt, note.id, req.user.id]
     )
     
   await appendLog('info', '笔记已更新', { id })
@@ -317,7 +509,7 @@ app.put('/api/notes/:id', authMiddleware, async (req, res) => {
 app.delete('/api/notes/:id', authMiddleware, async (req, res) => {
   try {
     const id = req.params.id
-    await pool.query('DELETE FROM notes WHERE id = $1', [id])
+    await pool.query('DELETE FROM notes WHERE id = $1 AND user_id = $2', [id, req.user.id])
   await appendLog('info', '笔记已删除', { id })
     res.json({ success: true })
   } catch (e) {
@@ -343,14 +535,14 @@ app.post('/api/import', authMiddleware, async (req, res) => {
       }
       
       await pool.query(
-        `INSERT INTO notes (id, title, content, tags, created_at, updated_at) 
-         VALUES ($1, $2, $3, $4, $5, $6)
+        `INSERT INTO notes (id, user_id, title, content, tags, created_at, updated_at) 
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
          ON CONFLICT (id) DO UPDATE SET
          title = EXCLUDED.title,
          content = EXCLUDED.content,
          tags = EXCLUDED.tags,
          updated_at = EXCLUDED.updated_at`,
-        [note.id, note.title, note.content, JSON.stringify(note.tags), note.createdAt, note.updatedAt]
+        [note.id, req.user.id, note.title, note.content, JSON.stringify(note.tags), note.createdAt, note.updatedAt]
       )
       imported += 1
     }
@@ -365,7 +557,7 @@ app.post('/api/import', authMiddleware, async (req, res) => {
 
 app.post('/api/backup', authMiddleware, async (req, res) => {
   try {
-    const notes = await getAllNotes()
+    const notes = await getAllNotes(req.user.id, req.user.admin || false)
     const fileName = 'notes.md'
     const content = (notes || [])
       .map((n) => {
@@ -430,13 +622,13 @@ app.get('/api/backup', authMiddleware, async (req, res) => {
     
     ;(async () => {
       try {
-        await pool.query('DELETE FROM notes')
+        await pool.query('DELETE FROM notes WHERE user_id = $1', [req.user.id])
         await appendLog('info', 'cleared old notes from postgres', { count: 0 })
         
         for (const item of parsedNotes) {
           await pool.query(
-            'INSERT INTO notes (id, title, content, tags, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6)',
-            [item.id, item.title, item.content, JSON.stringify(item.tags), item.createdAt, item.updatedAt]
+            'INSERT INTO notes (id, user_id, title, content, tags, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+            [item.id, req.user.id, item.title, item.content, JSON.stringify(item.tags), item.createdAt, item.updatedAt]
           )
         }
         
@@ -951,7 +1143,7 @@ async function getGist() {
 
 app.post('/api/gist', authMiddleware, async (req, res) => {
   try {
-    const notes = await getAllNotes()
+    const notes = await getAllNotes(req.user.id, req.user.admin || false)
 
     if (!notes || notes.length === 0) {
       await appendLog('warn', 'gist:post:no_notes', {})
@@ -1003,13 +1195,13 @@ app.get('/api/gist', authMiddleware, async (req, res) => {
       return res.status(400).json({ success: false, error: '备份文件中没有找到有效的笔记' })
     }
 
-    await pool.query('DELETE FROM notes')
+    await pool.query('DELETE FROM notes WHERE user_id = $1', [req.user.id])
     let importedCount = 0
     for (const note of notes) {
       try {
         await pool.query(
-          'INSERT INTO notes (id, title, content, tags, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6)',
-          [note.id, note.title, note.content, JSON.stringify(note.tags || []), note.createdAt, note.updatedAt]
+          'INSERT INTO notes (id, user_id, title, content, tags, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+          [note.id, req.user.id, note.title, note.content, JSON.stringify(note.tags || []), note.createdAt, note.updatedAt]
         )
         importedCount++
       } catch (e) {
@@ -1027,7 +1219,7 @@ app.get('/api/gist', authMiddleware, async (req, res) => {
 
 app.post('/api/r2', authMiddleware, async (req, res) => {
   try {
-    const notes = await getAllNotes()
+    const notes = await getAllNotes(req.user.id, req.user.admin || false)
     if (!notes || notes.length === 0) {
       await appendLog('warn', 'r2:post:no_notes')
       return res.json({ success: false, error: '没有可导出的笔记' })
@@ -1073,13 +1265,13 @@ app.get('/api/r2', authMiddleware, async (req, res) => {
       return res.status(400).json({ success: false, error: 'R2 文件中没有找到有效的笔记' })
     }
 
-    await pool.query('DELETE FROM notes')
+    await pool.query('DELETE FROM notes WHERE user_id = $1', [req.user.id])
     let importedCount = 0
     for (const note of notes) {
       try {
         await pool.query(
-          'INSERT INTO notes (id, title, content, tags, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6)',
-          [note.id, note.title, note.content, JSON.stringify(note.tags || []), note.createdAt, note.updatedAt]
+          'INSERT INTO notes (id, user_id, title, content, tags, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+          [note.id, req.user.id, note.title, note.content, JSON.stringify(note.tags || []), note.createdAt, note.updatedAt]
         )
         importedCount++
       } catch (e) {

@@ -1,14 +1,14 @@
 import React from 'react'
-import { Trash2, Calendar, FileText, Tag, Share2 } from 'lucide-react'
-import { cn, getTagClassName } from '@/lib/utils'
+import { Trash2, Calendar, FileText, Share2 } from 'lucide-react'
+import { cn } from '@/lib/utils'
 
 interface Note {
   id: string
   title: string
   content: string
-  tags: string[]
   createdAt: string
   updatedAt: string
+  userId?: number
 }
 
 interface CardProps {
@@ -46,9 +46,11 @@ const Card: React.FC<CardProps> = ({ note, onView, onDelete, onDragStart, onDrag
       .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
       .trim()
     
-    return cleanContent.length > 100 
-      ? cleanContent.substring(0, 100) + '...'
-      : cleanContent
+    // 只返回第一行内容
+    const firstLine = cleanContent.split('\n')[0].trim()
+    return firstLine.length > 100 
+      ? firstLine.substring(0, 100) + '...'
+      : firstLine
   }
 
   const handleCardClick = () => {
@@ -121,6 +123,11 @@ const Card: React.FC<CardProps> = ({ note, onView, onDelete, onDragStart, onDrag
           <div className="flex items-center mt-1 text-sm text-gray-500">
             <Calendar className="h-4 w-4 mr-1" />
             <span>更新于 {formatDate(note.updatedAt)}</span>
+            {note.userId && (
+              <span className="ml-3 px-2 py-0.5 bg-blue-100 text-blue-800 rounded-full text-xs">
+                用户: {note.userId}
+              </span>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-1 ml-2 opacity-0 group-hover:opacity-100" style={{ transition: 'none' }}>
@@ -143,32 +150,10 @@ const Card: React.FC<CardProps> = ({ note, onView, onDelete, onDragStart, onDrag
 
       <div className="flex items-start mb-3">
         <FileText className="h-4 w-4 text-gray-400 mr-2 mt-0.5 flex-shrink-0" />
-        <p className="flex-1 min-w-0 text-sm text-gray-600 leading-relaxed break-words overflow-hidden">
+        <p className="flex-1 min-w-0 text-sm text-gray-600 leading-relaxed overflow-hidden whitespace-nowrap">
           {getPreview(note.content)}
         </p>
       </div>
-
-      {note.tags && note.tags.length > 0 && (
-        <div className="flex flex-wrap gap-1 mb-3">
-          {note.tags.slice(0, 3).map((tag, index) => (
-            <span
-              key={index}
-              className={cn(
-                "inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border",
-                getTagClassName(tag)
-              )}
-            >
-              <Tag className="h-3 w-3 mr-1" />
-              {tag}
-            </span>
-          ))}
-          {note.tags.length > 3 && (
-            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600 border border-gray-200">
-              +{note.tags.length - 3}
-            </span>
-          )}
-        </div>
-      )}
 
       <div className="flex items-center justify-between text-xs text-gray-500 pt-2 border-t border-white/30">
         <span>字数: {note.content?.length || 0}</span>

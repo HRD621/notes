@@ -7,11 +7,149 @@
     font-family: var(--editor-font-family, 'Segoe UI', system-ui, sans-serif);
     font-size: var(--global-font-size, 14px);
     line-height: var(--global-line-height, 1.6);
+    transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
   }
   
-  *:not(.CodeMirror):not(.CodeMirror *) {
-    font-size: inherit;
+  html {
+    background-color: var(--bg-primary);
   }
+  
+  body, .note-container {
+    background-color: var(--bg-primary);
+    background-image:
+      repeating-linear-gradient(
+        45deg,
+        rgba(200, 190, 170, 0.03) 0px,
+        rgba(200, 190, 170, 0.03) 1px,
+        transparent 1px,
+        transparent 4px
+      ),
+      repeating-linear-gradient(
+        135deg,
+        rgba(180, 160, 130, 0.02) 0px,
+        rgba(180, 160, 130, 0.02) 1px,
+        transparent 1px,
+        transparent 3px
+      );
+    color: var(--text-primary);
+  }
+  
+  html.theme-dark body,
+  html.theme-dark .note-container {
+    background-color: var(--bg-primary);
+    background-image: none;
+    color: var(--text-primary);
+  }
+  
+  html.theme-eye-care body,
+  html.theme-eye-care .note-container {
+    background-color: var(--bg-primary);
+    background-image: none;
+    color: var(--text-primary);
+  }
+  
+  h1, h2, h3, h4, h5, h6 {
+    color: var(--text-primary);
+  }
+  
+  .bg-white {
+    background-color: var(--bg-card) !important;
+  }
+  
+  .bg-gray-50,
+  .bg-gray-100 {
+    background-color: var(--bg-secondary) !important;
+  }
+  
+  .bg-gradient-to-br {
+    background: var(--bg-primary) !important;
+  }
+  
+  html.theme-dark .bg-white\/30,
+  html.theme-dark .bg-white\/70,
+  html.theme-dark .bg-white\/80 {
+    background-color: rgba(42, 42, 42, 0.3) !important;
+  }
+  
+  html.theme-eye-care .bg-white\/30,
+  html.theme-eye-care .bg-white\/70,
+  html.theme-eye-care .bg-white\/80 {
+    background-color: rgba(226, 232, 213, 0.3) !important;
+  }
+  
+  .text-gray-900 {
+    color: var(--text-primary) !important;
+  }
+  
+  .text-gray-700 {
+    color: var(--text-secondary) !important;
+  }
+  
+  .text-gray-500 {
+    color: var(--text-secondary) !important;
+  }
+  
+  .text-gray-400 {
+    color: var(--text-muted) !important;
+  }
+  
+  .border-white\/30,
+  .border-white\/40,
+  .border-white\/60,
+  .border-white\/80 {
+    border-color: var(--border-color) !important;
+  }
+  
+  .border-gray-200,
+  .border-gray-300 {
+    border-color: var(--border-color) !important;
+  }
+  
+  .divide-gray-200 > * {
+    border-color: var(--border-color) !important;
+  }
+  
+  .backdrop-blur-md {
+    backdrop-filter: blur(12px);
+  }
+  
+  html.theme-dark .backdrop-blur-md {
+    background-color: rgba(34, 34, 34, 0.8) !important;
+  }
+  
+  html.theme-eye-care .backdrop-blur-md {
+    background-color: rgba(216, 229, 214, 0.8) !important;
+  }
+  
+  .login-card {
+    background-color: rgba(255, 255, 255, 0.95) !important;
+  }
+  
+  input, textarea, select {
+    background-color: var(--bg-card);
+    color: var(--text-primary);
+    border-color: var(--border-color);
+  }
+  
+  html.theme-dark input,
+  html.theme-dark textarea,
+  html.theme-dark select {
+    background-color: var(--bg-card);
+    color: var(--text-primary);
+    border-color: var(--border-color);
+  }
+  
+  html.theme-eye-care input,
+  html.theme-eye-care textarea,
+  html.theme-eye-care select {
+    background-color: var(--bg-card);
+    color: var(--text-primary);
+    border-color: var(--border-color);
+  }
+  
+}
+
+@layer base {
   
   h1 {
     font-size: calc(var(--global-font-size, 14px) * 1.5) !important;
@@ -69,15 +207,6 @@
   .text-4xl { font-size: calc(var(--global-font-size, 14px) * 2.25) !important; }
   .text-5xl { font-size: calc(var(--global-font-size, 14px) * 3) !important; }
   .text-6xl { font-size: calc(var(--global-font-size, 14px) * 3.75) !important; }
-  
-  body {
-    background-image: var(--app-bg-image, url('/background.webp'));
-    background-size: cover;
-    background-position: center;
-    background-repeat: no-repeat;
-    background-attachment: fixed;
-    background-color: transparent;
-  }
   
 }
 

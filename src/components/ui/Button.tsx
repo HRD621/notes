@@ -36,7 +36,7 @@ const Button: React.FC<ButtonProps> = ({
   }
 
   const handleMouseEnter = (e: React.MouseEvent<HTMLButtonElement>) => {
-    if (disabled || loading) return
+    if (disabled || loading || className) return
     
     const button = e.currentTarget
     
@@ -60,7 +60,7 @@ const Button: React.FC<ButtonProps> = ({
   }
   
   const handleMouseLeave = (e: React.MouseEvent<HTMLButtonElement>) => {
-    if (disabled || loading) return
+    if (disabled || loading || className) return
     
     const button = e.currentTarget
     

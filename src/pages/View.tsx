@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, Suspense, lazy } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
-import { ArrowLeft, Edit3, Settings, Trash2, Tag, Home, Share2 } from 'lucide-react'
+import { ArrowLeft, Edit3, Settings, Trash2, Home, Share2 } from 'lucide-react'
 import BackToTop from '@/components/BackTop'
 import Button from '@/components/ui/Button'
 import Loading from '@/components/ui/Loading'
@@ -16,7 +16,6 @@ interface Note {
   id: string
   title: string
   content: string
-  tags: string[]
   createdAt: string
   updatedAt: string
 }
@@ -62,33 +61,6 @@ const View: React.FC = () => {
     return ''
   }, [])
 
-  const scrollToTag = useCallback((tag: string) => {
-    const id = slugify(tag)
-    const target = document.getElementById(id)
-    if (target) {
-      target.scrollIntoView({ behavior: 'smooth', block: 'start' })
-      const el = target as HTMLElement
-      const originalBg = el.style.backgroundColor
-      el.style.backgroundColor = 'rgba(187, 247, 208, 0.8)'
-      setTimeout(() => { el.style.backgroundColor = originalBg || '' }, 1500)
-      return
-    }
-    const container = document.querySelector('.prose')
-    if (!container) return
-    const blocks = container.querySelectorAll('h1,h2,h3,h4,h5,h6,p,li,blockquote')
-    for (const block of Array.from(blocks)) {
-      const text = (block.textContent || '').trim()
-      if (text && text.includes(tag)) {
-        block.scrollIntoView({ behavior: 'smooth', block: 'start' })
-        const el = block as HTMLElement
-        const originalBg = el.style.backgroundColor
-        el.style.backgroundColor = 'rgba(187, 247, 208, 0.8)'
-        setTimeout(() => { el.style.backgroundColor = originalBg || '' }, 1500)
-        break
-      }
-    }
-  }, [])
-  
   const highlightAndScrollToText = useCallback(() => {
     if (!highlightPosition || !note?.content) return
     
@@ -147,7 +119,6 @@ const View: React.FC = () => {
         const bg = settings.backgroundImageUrl.trim()
         if (bg) {
           document.documentElement.style.setProperty('--app-bg-image', `url('${bg}')`)
-
           const body = document.body
           if (body) {
             body.style.backgroundImage = `url('${bg}')`
@@ -158,14 +129,9 @@ const View: React.FC = () => {
           }
         } else {
           document.documentElement.style.removeProperty('--app-bg-image')
-
           const body = document.body
           if (body) {
-            body.style.backgroundImage = "url('/background.webp')"
-            body.style.backgroundSize = 'cover'
-            body.style.backgroundPosition = 'center'
-            body.style.backgroundRepeat = 'no-repeat'
-            body.style.backgroundAttachment = 'fixed'
+            body.style.backgroundImage = ''
           }
         }
       }
@@ -318,7 +284,7 @@ const View: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-100/60 to-gray-200/60 flex items-center justify-center" style={{ backgroundImage: "var(--app-bg-image, url('/background.webp'))", backgroundSize: 'cover', backgroundPosition: 'center', backgroundAttachment: 'fixed' }}>
+      <div className="min-h-screen bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center">
         <Loading size="lg" text="加载笔记中..." />
       </div>
     )
@@ -326,7 +292,7 @@ const View: React.FC = () => {
 
   if (!note && !error) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-100/60 to-gray-200/60 flex items-center justify-center" style={{ backgroundImage: "var(--app-bg-image, url('/background.webp'))", backgroundSize: 'cover', backgroundPosition: 'center', backgroundAttachment: 'fixed' }}>
+      <div className="min-h-screen bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center">
         <div className="text-center">
           <h2 className="font-bold text-gray-900 mb-4" style={{ fontSize: 'calc(var(--global-font-size, 16px) * 1.25)' }}>笔记不存在</h2>
           <p className="text-gray-600 mb-6">您要查看的笔记可能已被删除或不存在。</p>
@@ -340,7 +306,7 @@ const View: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-100/60 to-gray-200/60" style={{ backgroundImage: "var(--app-bg-image, url('/background.webp'))", backgroundSize: 'cover', backgroundPosition: 'center', backgroundAttachment: 'fixed' }}>
+    <div className="min-h-screen bg-gradient-to-br from-gray-100 to-gray-200">
       <header className="bg-white/30 backdrop-blur-md shadow-sm border-b border-white/30">
         <div className="w-full">
           <div className="flex items-center h-16 px-4 sm:px-6 lg:px-8">
@@ -444,21 +410,6 @@ const View: React.FC = () => {
                     <span>{note.content?.length || 0}</span>
                   </div>
                 </div>
-                  
-                  {note.tags && note.tags.length > 0 && (
-                    <div className="flex flex-wrap gap-2">
-                      {note.tags.map((tag, index) => (
-                        <button
-                          key={index}
-                          onClick={() => scrollToTag(tag)}
-                          className="inline-flex items-center px-3 py-1 rounded-full font-medium bg-blue-100 text-blue-800"
-                        >
-                          <Tag className="h-4 w-4 mr-1" />
-                          {tag}
-                        </button>
-                      ))}
-                    </div>
-                  )}
               </div>
 
                   {note.content ? (

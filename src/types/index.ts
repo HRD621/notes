@@ -15,6 +15,7 @@ export interface Note {
   tags: string[]
   createdAt: string
   updatedAt: string
+  userId?: number
 }
 
 export interface NoteResponse {

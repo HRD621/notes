@@ -4,7 +4,9 @@ import { api } from '@/lib/api'
 interface AuthContextType {
   isAuthenticated: boolean
   password: string | null
-  login: (password: string) => Promise<boolean>
+  admin: boolean
+  login: (username: string, password: string) => Promise<boolean>
+  register: (username: string, password: string) => Promise<boolean>
   logout: () => void
   loading: boolean
 }
@@ -25,17 +27,37 @@ interface AuthProviderProps {
 
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [password, setPassword] = useState<string | null>(localStorage.getItem('password'))
+  const [admin, setAdmin] = useState<boolean>(localStorage.getItem('admin') === 'true')
 
   const [loading] = useState(false)
 
 
-  const login = async (passwordInput: string): Promise<boolean> => {
+  const login = async (username: string, passwordInput: string): Promise<boolean> => {
     try {
-      const response = await api.post('/api/login', { password: passwordInput })
+      const response = await api.post('/api/login', { username, password: passwordInput })
+      
+      if (response.data.success) {
+        setPassword(passwordInput)
+        setAdmin(response.data.admin || false)
+        localStorage.setItem('password', passwordInput)
+        localStorage.setItem('username', username)
+        localStorage.setItem('admin', (response.data.admin || false).toString())
+        return true
+      }
+      return false
+    } catch {
+      return false
+    }
+  }
+
+  const register = async (username: string, passwordInput: string): Promise<boolean> => {
+    try {
+      const response = await api.post('/api/register', { username, password: passwordInput })
       
       if (response.data.success) {
         setPassword(passwordInput)
         localStorage.setItem('password', passwordInput)
+        localStorage.setItem('username', username)
         return true
       }
       return false
@@ -46,13 +68,18 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const logout = () => {
     setPassword(null)
+    setAdmin(false)
     localStorage.removeItem('password')
+    localStorage.removeItem('username')
+    localStorage.removeItem('admin')
   }
 
   const value: AuthContextType = {
     isAuthenticated: !!password,
     password,
+    admin,
     login,
+    register,
     logout,
     loading,
   }

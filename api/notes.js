@@ -14,7 +14,6 @@ async function initDatabase() {
         id TEXT PRIMARY KEY,
         title TEXT NOT NULL,
         content TEXT NOT NULL,
-        tags TEXT,
         created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
         updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
       )
@@ -37,7 +36,6 @@ async function getAllNotes() {
     id: row.id,
     title: row.title,
     content: row.content,
-    tags: row.tags ? JSON.parse(row.tags) : [],
     createdAt: row.created_at?.toISOString() || new Date().toISOString(),
     updatedAt: row.updated_at?.toISOString() || new Date().toISOString(),
   }))
@@ -65,14 +63,14 @@ export default async function handler(req, res) {
     }
 
     if (req.method === 'POST') {
-      const { id, title, content, tags } = req.body
+      const { id, title, content } = req.body
       if (!id || !title || !content) {
         return res.status(400).json({ success: false, error: 'Missing required fields' })
       }
       
       await pool.query(
-        'INSERT INTO notes (id, title, content, tags, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (id) DO UPDATE SET title = EXCLUDED.title, content = EXCLUDED.content, tags = EXCLUDED.tags, updated_at = EXCLUDED.updated_at',
-        [id, title, content, JSON.stringify(tags || []), new Date().toISOString(), new Date().toISOString()]
+        'INSERT INTO notes (id, title, content, created_at, updated_at) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (id) DO UPDATE SET title = EXCLUDED.title, content = EXCLUDED.content, updated_at = EXCLUDED.updated_at',
+        [id, title, content, new Date().toISOString(), new Date().toISOString()]
       )
       
       return res.json({ success: true, id })

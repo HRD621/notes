@@ -32,5 +32,14 @@ export default defineConfig({
       }
     },
     chunkSizeWarningLimit: 1000
+  },
+  // 👇 只需要添加这部分
+  server: {
+    proxy: {
+      '/api': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+      }
+    }
   }
 })

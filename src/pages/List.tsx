@@ -1,7 +1,6 @@
 import React, { useState, useEffect, Suspense, lazy, useRef, useMemo } from 'react'
-import { useLocation } from 'react-router-dom'
-import { useNavigate } from 'react-router-dom'
-import { Plus, Settings, Tag } from 'lucide-react'
+import { useLocation, useNavigate } from 'react-router-dom'
+import { Plus, Settings, Users, Sun, Moon, Eye } from 'lucide-react'
 import Button from '@/components/ui/Button'
 import NoteCard from '@/components/Card'
 import AdvancedSearch from '@/components/Advanced'
@@ -9,13 +8,18 @@ import BackToTop from '@/components/BackTop'
 import { AlertModal, ConfirmModal } from '@/components/Modal'
 import { useModal } from '@/hooks/Modal'
 import { notesApi, orderApi } from '@/lib/api'
+import { useAuth } from '@/contexts/Context'
+import { useTheme, ThemeMode } from '@/contexts/ThemeContext'
 import type { Note, SettingsChangedEvent } from '@/types'
 
 const SettingsModal = lazy(() => import('@/components/Settings'))
+const UserListModal = lazy(() => import('@/components/UserList'))
 
 const List: React.FC = () => {
   const navigate = useNavigate()
   const location = useLocation()
+  const { admin, logout } = useAuth()
+  const { theme, setTheme } = useTheme()
   const [notes, setNotes] = useState<Note[]>(() => {
     const state = location.state as { notes?: Note[] } | null
     if (state?.notes && Array.isArray(state.notes)) {
@@ -23,7 +27,12 @@ const List: React.FC = () => {
     }
     try {
       const cache = sessionStorage.getItem('notes-cache') || localStorage.getItem('notes-cache')
-      return cache ? JSON.parse(cache) as Note[] : []
+      const cached = cache ? JSON.parse(cache) as Note[] : []
+      return cached.map(n => ({
+        ...n,
+        content: n.content || '',
+        tags: n.tags || []
+      }))
     } catch {
       return []
     }
@@ -35,7 +44,12 @@ const List: React.FC = () => {
     }
     try {
       const cache = sessionStorage.getItem('notes-cache') || localStorage.getItem('notes-cache')
-      return cache ? JSON.parse(cache) as Note[] : []
+      const cached = cache ? JSON.parse(cache) as Note[] : []
+      return cached.map(n => ({
+        ...n,
+        content: n.content || '',
+        tags: n.tags || []
+      }))
     } catch {
       return []
     }
@@ -50,21 +64,9 @@ const List: React.FC = () => {
   })
   const [error, setError] = useState('')
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
+  const [isUserListOpen, setIsUserListOpen] = useState(false)
   const [displayTitle, setDisplayTitle] = useState('')
   const [draggedNoteId, setDraggedNoteId] = useState<string | null>(null)
-  const [, setDraggedTag] = useState<string | null>(null)
-  const [tagOrder, setTagOrder] = useState<string[]>(() => {
-    try {
-      const saved = localStorage.getItem('tag-order')
-      if (saved) {
-        const parsed = JSON.parse(saved)
-        if (Array.isArray(parsed)) {
-          return parsed
-        }
-      }
-    } catch {}
-    return []
-  })
   const [flash, setFlash] = useState<{ action: 'created' | 'updated'; title: string; noteId?: string; timestamp: number } | null>(null)
   const hasInitialCacheRef = useRef<boolean>(false)
   try {
@@ -96,26 +98,6 @@ const List: React.FC = () => {
       } catch {}
     }
     loadSettingsTitle()
-    
-    const loadTagOrder = async () => {
-      try {
-        const response = await orderApi.getOrder('tag-order')
-        const data = response.data?.data
-        if (data && Array.isArray(data) && data.length > 0) {
-          setTagOrder(current => {
-            const currentStr = JSON.stringify(current)
-            const newStr = JSON.stringify(data)
-            if (currentStr !== newStr) {
-              return data
-            }
-            return current
-          })
-          localStorage.setItem('tag-order', JSON.stringify(data))
-        }
-      } catch {
-      }
-    }
-    loadTagOrder()
     
     try {
       const raw = localStorage.getItem('note-flash')
@@ -150,11 +132,7 @@ const List: React.FC = () => {
 
           const body = document.body
           if (body) {
-            body.style.backgroundImage = "url('/background.webp')"
-            body.style.backgroundSize = 'cover'
-            body.style.backgroundPosition = 'center'
-            body.style.backgroundRepeat = 'no-repeat'
-            body.style.backgroundAttachment = 'fixed'
+            body.style.backgroundImage = ''
           }
         }
       }
@@ -255,12 +233,18 @@ const List: React.FC = () => {
       const response = await notesApi.getNotes()
       
       if (Array.isArray(response.data)) {
-        const ordered = await applyOrder(response.data)
+        // 确保每个笔记都有content字段
+        const notesWithContent = response.data.map(note => ({
+          ...note,
+          content: note.content || '',
+          tags: note.tags || []
+        }))
+        const ordered = await applyOrder(notesWithContent)
         setNotes(ordered)
         setFilteredNotes(ordered)
         try {
-          sessionStorage.setItem('notes-cache', JSON.stringify(ordered))
-          localStorage.setItem('notes-cache', JSON.stringify(ordered))
+          const cacheData = JSON.stringify(ordered)
+          sessionStorage.setItem('notes-cache', cacheData)
         } catch {}
         await saveNoteOrder(ordered)
       } else if (response.data && typeof response.data === 'object' && !Array.isArray(response.data)) {
@@ -270,7 +254,7 @@ const List: React.FC = () => {
           id: singleNote.id || '1',
           title: singleNote.title || '默认笔记',
           content: singleNote.content || '',
-          tags: singleNote.tags || [],
+
           createdAt: singleNote.createdAt || new Date().toISOString(),
           updatedAt: singleNote.updatedAt || new Date().toISOString()
         }]
@@ -278,8 +262,8 @@ const List: React.FC = () => {
         setNotes(ordered)
         setFilteredNotes(ordered)
         try {
-          sessionStorage.setItem('notes-cache', JSON.stringify(ordered))
-          localStorage.setItem('notes-cache', JSON.stringify(ordered))
+          const cacheData = JSON.stringify(ordered)
+          sessionStorage.setItem('notes-cache', cacheData)
         } catch {}
         await saveNoteOrder(ordered)
       } else {
@@ -306,7 +290,15 @@ const List: React.FC = () => {
       let newNotes: Note[] = []
       
       if (Array.isArray(response.data)) {
-        newNotes = response.data
+        // 保留现有笔记的content字段，如果没有则使用空字符串
+        newNotes = response.data.map(newNote => {
+          const existingNote = notes.find(n => n.id === newNote.id)
+          return {
+            ...newNote,
+            content: existingNote?.content || newNote.content || '',
+            tags: existingNote?.tags || newNote.tags || []
+          }
+        })
       } else if (response.data && typeof response.data === 'object' && !Array.isArray(response.data)) {
 
         const singleNote = response.data as Note
@@ -314,7 +306,6 @@ const List: React.FC = () => {
           id: singleNote.id || '1',
           title: singleNote.title || '默认笔记',
           content: singleNote.content || '',
-          tags: singleNote.tags || [],
           createdAt: singleNote.createdAt || new Date().toISOString(),
           updatedAt: singleNote.updatedAt || new Date().toISOString()
         }]
@@ -326,8 +317,8 @@ const List: React.FC = () => {
         setNotes(ordered)
         setFilteredNotes(ordered)
         try {
-          sessionStorage.setItem('notes-cache', JSON.stringify(ordered))
-          localStorage.setItem('notes-cache', JSON.stringify(ordered))
+          const cacheData = JSON.stringify(ordered)
+          sessionStorage.setItem('notes-cache', cacheData)
         } catch {}
         await saveNoteOrder(ordered)
       }
@@ -342,7 +333,6 @@ const List: React.FC = () => {
       id: Date.now().toString(),
       title: '新笔记',
       content: '',
-      tags: [],
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     }
@@ -395,11 +385,11 @@ const List: React.FC = () => {
         }
       } catch {}
       try {
-        const cacheRaw2 = localStorage.getItem('notes-cache')
+        const cacheRaw2 = sessionStorage.getItem('notes-cache')
         if (cacheRaw2) {
           const list2 = JSON.parse(cacheRaw2) as Array<{ id: string; [key: string]: unknown }>
           const filtered2 = list2.filter((n) => n.id !== noteId)
-          localStorage.setItem('notes-cache', JSON.stringify(filtered2))
+          sessionStorage.setItem('notes-cache', JSON.stringify(filtered2))
         }
       } catch {}
       try {
@@ -427,37 +417,14 @@ const List: React.FC = () => {
     setIsSettingsOpen(true)
   }
 
+  const handleLogout = () => {
+    logout()
+    navigate('/login')
+  }
+
   const handleSearch = (results: Note[]) => {
     setFilteredNotes(results)
   }
-
-  const handleTagClick = (tag: string) => {
-
-    const notesWithTag = notes.filter((note: Note) => note.tags && note.tags.includes(tag))
-    if (notesWithTag.length > 0) {
-
-      const first = notesWithTag[0]
-      navigate(`/notes/${first.id}`, { state: { note: first } })
-    }
-  }
-
-  const getAllTags = useMemo(() => {
-    const allTags = new Set<string>()
-    notes.forEach((note: Note) => {
-      if (note.tags) {
-        note.tags.forEach((tag: string) => allTags.add(tag))
-      }
-    })
-    const tagsArray = Array.from(allTags)
-    
-    if (tagOrder.length > 0) {
-      const orderedTags = tagOrder.filter(tag => allTags.has(tag))
-      const newTags = tagsArray.filter(tag => !tagOrder.includes(tag))
-      return [...orderedTags, ...newTags.sort()]
-    }
-    
-    return tagsArray.sort()
-  }, [notes, tagOrder])
 
   const handleNoteDragStart = (e: React.DragEvent, noteId: string) => {
     setDraggedNoteId(noteId);
@@ -491,54 +458,11 @@ const List: React.FC = () => {
     setNotes(newNotes)
     
     try {
-      sessionStorage.setItem('notes-cache', JSON.stringify(newNotes))
-      localStorage.setItem('notes-cache', JSON.stringify(newNotes))
+      const cacheData = JSON.stringify(newNotes)
+      sessionStorage.setItem('notes-cache', cacheData)
     } catch {}
 
     await saveNoteOrder(newNotes)
-  }
-
-  const handleTagDragStart = (e: React.DragEvent, tag: string) => {
-    setDraggedTag(tag);
-    e.dataTransfer.setData('text/plain', tag);
-    (e.currentTarget as HTMLElement).style.opacity = '0.5';
-  }
-
-  const handleTagDragEnd = (e: React.DragEvent) => {
-    (e.currentTarget as HTMLElement).style.opacity = '1'
-    setDraggedTag(null)
-  }
-
-  const handleTagDragOver = (e: React.DragEvent) => {
-    e.preventDefault()
-  }
-
-  const handleTagDrop = async (e: React.DragEvent, targetTag: string) => {
-    e.preventDefault()
-    const draggedTagName = e.dataTransfer.getData('text/plain')
-    if (!draggedTagName || draggedTagName === targetTag) return
-
-    const currentTags = getAllTags
-    const draggedIndex = currentTags.findIndex(tag => tag === draggedTagName)
-    const targetIndex = currentTags.findIndex(tag => tag === targetTag)
-    
-    if (draggedIndex === -1 || targetIndex === -1) return
-
-    const newTagOrder = [...currentTags]
-    const draggedTagValue = newTagOrder[draggedIndex]
-    newTagOrder.splice(draggedIndex, 1)
-    newTagOrder.splice(targetIndex, 0, draggedTagValue)
-
-    setTagOrder(newTagOrder)
-    
-    try {
-      await orderApi.saveOrder('tag-order', newTagOrder)
-      localStorage.setItem('tag-order', JSON.stringify(newTagOrder))
-    } catch {
-      try {
-        localStorage.setItem('tag-order', JSON.stringify(newTagOrder))
-      } catch {}
-    }
   }
 
   const formatRelativeTime = (time: number) => {
@@ -563,7 +487,7 @@ const List: React.FC = () => {
 
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-100/60 to-gray-200/60" style={{ backgroundImage: "var(--app-bg-image, url('/background.webp'))", backgroundSize: 'cover', backgroundPosition: 'center', backgroundAttachment: 'fixed' }}>
+    <div className="min-h-screen bg-gradient-to-br from-gray-100 to-gray-200">
 
       <form 
         style={{ display: 'none' }}
@@ -591,31 +515,55 @@ const List: React.FC = () => {
       <header className="bg-white/30 backdrop-blur-md shadow-sm border-b border-white/30">
         <div className="h-16 flex items-center justify-between px-4 sm:px-6 lg:px-8 relative">
 
-          {flash && (
-            <button
-              onClick={() => {
-                if (flash.noteId) {
-                  navigate(`/notes/${flash.noteId}`)
-                }
-                try { localStorage.removeItem('note-flash') } catch {}
-                setFlash(null)
-              }}
-              className={`absolute left-1/2 -translate-x-1/2 inline-flex items-center px-4 py-1.5 rounded-full text-sm font-medium border transition-colors hover:opacity-90 ${flash.action === 'created' ? 'bg-green-50/80 text-green-700 border-green-200/80' : 'bg-blue-50/80 text-blue-700 border-blue-200/80'}`}
-              style={{ backdropFilter: 'blur(2px)' }}
-            >
-              {flash.action === 'created' ? '新建了' : '修改了'}
-              {`“${flash.title || '无标题'}”笔记 · ${formatRelativeTime(flash.timestamp)}`}
-            </button>
-          )}
-
-          <h1 className="font-semibold text-gray-900" style={{ fontSize: 'var(--global-font-size, 16px)' }}>{displayTitle || '笔记系统'}</h1>
+          <div className="flex items-center gap-4">
+            <h1 className="font-semibold text-gray-900" style={{ fontSize: 'var(--global-font-size, 16px)' }}>{displayTitle || '笔记系统'}</h1>
+            
+            {flash && (
+              <button
+                onClick={() => {
+                  if (flash.noteId) {
+                    navigate(`/notes/${flash.noteId}`)
+                  }
+                  try { localStorage.removeItem('note-flash') } catch {}
+                  setFlash(null)
+                }}
+                className={`inline-flex items-center px-4 py-1.5 rounded-full text-sm font-medium border transition-colors hover:opacity-90 ${flash.action === 'created' ? 'bg-green-50/80 text-green-700 border-green-200/80' : 'bg-blue-50/80 text-blue-700 border-blue-200/80'}`}
+                style={{ backdropFilter: 'blur(2px)' }}
+              >
+                {flash.action === 'created' ? '新建：' : '上次修改：'}
+                {`${flash.title || '无标题'}`}
+              </button>
+            )}
+          </div>
 
           <div className="flex items-center gap-4">
             <div className="flex space-x-2">
+              <Button 
+                onClick={() => {
+                  const themes: ThemeMode[] = ['light', 'dark', 'eye-care']
+                  const currentIndex = themes.indexOf(theme)
+                  const nextIndex = (currentIndex + 1) % themes.length
+                  setTheme(themes[nextIndex])
+                }}
+                variant="secondary" 
+                className="border border-white"
+                title={`当前：${theme === 'light' ? '日间' : theme === 'dark' ? '夜间' : '护眼'}模式，点击切换`}
+              >
+                {theme === 'light' && <Sun className="h-4 w-4 mr-2" />}
+                {theme === 'dark' && <Moon className="h-4 w-4 mr-2" />}
+                {theme === 'eye-care' && <Eye className="h-4 w-4 mr-2" />}
+                {theme === 'light' ? '日间' : theme === 'dark' ? '夜间' : '护眼'}
+              </Button>
               <Button onClick={handleCreateNote} variant="success">
                 <Plus className="h-4 w-4 mr-2" />
                 新建笔记
               </Button>
+              {admin && (
+                <Button onClick={() => setIsUserListOpen(true)} variant="secondary" className="border border-white">
+                  <Users className="h-4 w-4 mr-2" />
+                  用户列表
+                </Button>
+              )}
               <Button onClick={handleSettings} variant="secondary" className="border border-white">
                 <Settings className="h-4 w-4 mr-2" />
                 设置
@@ -628,57 +576,15 @@ const List: React.FC = () => {
                 placeholder="搜索笔记..."
               />
             </div>
+            <Button onClick={handleLogout} variant="danger" className="border border-white">
+              退出
+            </Button>
           </div>
         </div>
       </header>
 
       <main className="w-full">
-        <div className="flex gap-6">
-
-          <div className="w-80 flex-shrink-0 -ml-4 sm:-ml-6 lg:-ml-8">
-            <div className="bg-white/40 backdrop-blur-lg rounded-lg shadow border border-white/30 p-4 ml-4 sm:ml-6 lg:ml-8">
-              <h3 className="font-semibold text-gray-900 mb-4 flex items-center" style={{ fontSize: 'var(--global-font-size, 16px)' }}>
-                <Tag className="h-5 w-5 mr-2" />
-                标签
-              </h3>
-              <div className="space-y-2">
-                {getAllTags.map((tag) => {
-                  return (
-                    <button
-                      key={tag}
-                      onClick={() => handleTagClick(tag)}
-                      className="w-full text-left px-3 py-2 rounded-lg flex items-center text-xl font-semibold"
-                      style={{
-                        backgroundColor: 'transparent',
-                        color: '#FFFFFF',
-                        transition: 'none'
-                      }}
-                      draggable
-                      onDragStart={(e) => handleTagDragStart(e, tag)}
-                      onDragEnd={handleTagDragEnd}
-                      onDragOver={handleTagDragOver}
-                      onDrop={(e) => handleTagDrop(e, tag)}
-                      onMouseEnter={(e: React.MouseEvent<HTMLButtonElement>) => {
-                        e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.3)'
-                        e.currentTarget.style.color = '#111827'
-                      }}
-                      onMouseLeave={(e: React.MouseEvent<HTMLButtonElement>) => {
-                        e.currentTarget.style.backgroundColor = 'transparent'
-                        e.currentTarget.style.color = '#FFFFFF'
-                      }}
-                    >
-                      <span className="flex items-center">
-                        <Tag className="h-3 w-3 mr-2" />
-                        {tag}
-                      </span>
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
-          </div>
-
-          <div className="flex-1 px-4 py-4 sm:px-6 lg:px-8">
+        <div className="px-4 py-4 sm:px-6 lg:px-8">
           {error && (
             <div className="mb-4 bg-red-50 border border-red-200 rounded-md p-4">
               <div className="text-red-600">{error}</div>
@@ -721,7 +627,6 @@ const List: React.FC = () => {
               </p>
             </div>
           )}
-          </div>
         </div>
       </main>
 
@@ -729,6 +634,15 @@ const List: React.FC = () => {
         <SettingsModal
           isOpen={isSettingsOpen}
           onClose={() => setIsSettingsOpen(false)}
+        />
+        <UserListModal
+          isOpen={isUserListOpen}
+          onClose={() => setIsUserListOpen(false)}
+          onUserSelect={(userId) => {
+            // 导航到用户笔记页面
+            navigate(`/user/${userId}/notes`)
+            setIsUserListOpen(false)
+          }}
         />
       </Suspense>
 

@@ -7,6 +7,7 @@ export function loadAndApplyBackground(
   
   if (!bg) {
     document.documentElement.style.removeProperty('--app-bg-image')
+    document.body.style.backgroundImage = ''
     onSuccess?.()
     return
   }
@@ -30,6 +31,8 @@ export function loadAndApplyBackground(
   
   img.onerror = () => {
     console.error('背景图验证失败:', bg.substring(0, 50) + '...')
+    document.documentElement.style.removeProperty('--app-bg-image')
+    document.body.style.backgroundImage = ''
     onError?.()
   }
   

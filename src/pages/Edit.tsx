@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useCallback, Suspense, lazy } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
-import { Save, ArrowLeft, Settings, Home } from 'lucide-react'
+import { Save, ArrowLeft, Settings, Home, Download } from 'lucide-react'
 import BackToTop from '@/components/BackTop'
 import Button from '@/components/ui/Button'
 import Loading from '@/components/ui/Loading'
 import { notesApi } from '@/lib/api'
+import { marked } from 'marked'
+import { SelectModal } from '@/components/Modal'
 
 const SettingsModal = lazy(() => import('@/components/Settings'))
 
@@ -16,7 +18,6 @@ interface Note {
   id: string
   title: string
   content: string
-  tags: string[]
   createdAt: string
   updatedAt: string
 }
@@ -43,9 +44,9 @@ const Edit: React.FC = () => {
   const [error, setError] = useState('')
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [isNewNote, setIsNewNote] = useState(false)
-  const [tagInput, setTagInput] = useState('')
   const [showSuccessMessage, setShowSuccessMessage] = useState(false)
   const [editorReady] = useState(true)
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false)
   const [mainMarginLeft, setMainMarginLeft] = useState<string>('0px')
   const [isDesktop, setIsDesktop] = useState<boolean>(window.innerWidth >= 768)
 
@@ -56,12 +57,9 @@ const Edit: React.FC = () => {
       setNote(state.note)
       setIsNewNote(true)
       setLoading(false)
+      loadNote()
     } else {
-      if (!note) {
-        loadNote()
-      } else {
-        setLoading(false)
-      }
+      loadNote()
     }
     
     const settingsHandler = (event: CustomEvent) => {
@@ -84,11 +82,7 @@ const Edit: React.FC = () => {
 
           const body = document.body
           if (body) {
-            body.style.backgroundImage = "url('/background.webp')"
-            body.style.backgroundSize = 'cover'
-            body.style.backgroundPosition = 'center'
-            body.style.backgroundRepeat = 'no-repeat'
-            body.style.backgroundAttachment = 'fixed'
+            body.style.backgroundImage = ''
           }
         }
       }
@@ -157,7 +151,6 @@ const Edit: React.FC = () => {
           id: response.data.id,
           title: response.data.title || '无标题',
           content: response.data.content || '',
-          tags: response.data.tags || [],
           createdAt: response.data.createdAt || new Date().toISOString(),
           updatedAt: response.data.updatedAt || new Date().toISOString()
         })
@@ -166,7 +159,6 @@ const Edit: React.FC = () => {
             id: response.data.id,
             title: response.data.title || '无标题',
             content: response.data.content || '',
-            tags: response.data.tags || [],
             createdAt: response.data.createdAt || new Date().toISOString(),
             updatedAt: response.data.updatedAt || new Date().toISOString()
           }))
@@ -190,29 +182,6 @@ const Edit: React.FC = () => {
   const handleTitleChange = (value: string) => {
     if (note) {
       setNote(prev => prev ? { ...prev, title: value } : null)
-    }
-  }
-
-  const handleAddTag = () => {
-    if (tagInput.trim() && note) {
-      const newTag = tagInput.trim()
-      if (!note.tags.includes(newTag)) {
-        setNote(prev => prev ? { ...prev, tags: [...prev.tags, newTag] } : null)
-      }
-      setTagInput('')
-    }
-  }
-
-  const handleRemoveTag = (tagToRemove: string) => {
-    if (note) {
-      setNote(prev => prev ? { ...prev, tags: prev.tags.filter(tag => tag !== tagToRemove) } : null)
-    }
-  }
-
-  const handleTagInputKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      e.preventDefault()
-      handleAddTag()
     }
   }
 
@@ -242,8 +211,7 @@ const Edit: React.FC = () => {
       
       const noteData = {
         title: note.title || '无标题',
-        content: note.content || '',
-        tags: note.tags || []
+        content: note.content || ''
       }
       
       
@@ -269,7 +237,6 @@ const Edit: React.FC = () => {
             id: newNoteId,
             title: noteData.title,
             content: noteData.content,
-            tags: noteData.tags,
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString()
           } } })
@@ -280,7 +247,6 @@ const Edit: React.FC = () => {
               id: newNoteId,
               title: noteData.title,
               content: noteData.content,
-              tags: noteData.tags,
               createdAt: new Date().toISOString(),
               updatedAt: new Date().toISOString()
             }, ...list]
@@ -315,7 +281,6 @@ const Edit: React.FC = () => {
           id: note.id,
           title: note.title,
           content: note.content,
-          tags: note.tags,
           createdAt: note.createdAt,
           updatedAt: new Date().toISOString()
         } } })
@@ -326,7 +291,7 @@ const Edit: React.FC = () => {
             const updated = list.map(n => n.id === note.id ? {
               ...n,
               title: note.title,
-              tags: note.tags,
+              content: note.content,
               updatedAt: new Date().toISOString()
             } : n)
             sessionStorage.setItem('notes-cache', JSON.stringify(updated))
@@ -379,6 +344,45 @@ const Edit: React.FC = () => {
     setIsSettingsOpen(true)
   }
 
+  const downloadFile = (content: string, filename: string, mimeType: string) => {
+    const blob = new Blob([content], { type: mimeType })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }
+
+  const handleExport = (format: string) => {
+    if (!note) return
+
+    const title = note.title || '无标题'
+    const content = note.content || ''
+
+    if (format === 'markdown') {
+      downloadFile(content, `${title}.md`, 'text/markdown')
+    } else if (format === 'html') {
+      const htmlContent = marked(content)
+      const fullHtml = `<!DOCTYPE html>
+<html>
+<head>
+<title>${title}</title>
+<meta charset="UTF-8">
+<style>
+body { font-family: Arial, sans-serif; line-height: 1.6; margin: 20px; }
+</style>
+</head>
+<body>
+${htmlContent}
+</body>
+</html>`
+      downloadFile(fullHtml, `${title}.html`, 'text/html')
+    }
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -403,7 +407,7 @@ const Edit: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-100/60 to-gray-200/60" style={{ backgroundImage: "var(--app-bg-image, url('/background.webp'))", backgroundSize: 'cover', backgroundPosition: 'center', backgroundAttachment: 'fixed' }}>
+    <div className="min-h-screen bg-gradient-to-br from-gray-100 to-gray-200">
       <header className="bg-white/30 backdrop-blur-md shadow-sm border-b border-white/30">
         <div className="w-full">
           <div className="flex items-center h-16 px-4 sm:px-6 lg:px-8">
@@ -452,6 +456,13 @@ const Edit: React.FC = () => {
                 保存
               </Button>
               <Button
+                onClick={() => setIsExportModalOpen(true)}
+                variant="secondary"
+              >
+                <Download className="h-4 w-4 mr-2" />
+                导出
+              </Button>
+              <Button
                 onClick={handleSettings}
                 variant="secondary"
               >
@@ -480,12 +491,6 @@ const Edit: React.FC = () => {
                 value={note.content}
                 onChange={handleContentChange}
                 placeholder="开始编写您的笔记..."
-                tags={note.tags}
-                tagInput={tagInput}
-                onTagInputChange={(value) => setTagInput(value)}
-                onAddTag={handleAddTag}
-                onRemoveTag={handleRemoveTag}
-                onTagInputKeyPress={handleTagInputKeyPress}
               />
             ) : (
               <div className="p-8 text-center">
@@ -497,6 +502,20 @@ const Edit: React.FC = () => {
       </main>
 
       <EditorToolbar onInsertText={handleInsertText} />
+
+      <SelectModal
+        isOpen={isExportModalOpen}
+        onClose={() => setIsExportModalOpen(false)}
+        title="选择导出格式"
+        message="请选择要导出的格式："
+        options={[
+          { value: 'markdown', label: 'Markdown', description: '导出为 Markdown 格式文件' },
+          { value: 'html', label: 'HTML', description: '导出为 HTML 格式文件' }
+        ]}
+        onConfirm={handleExport}
+        confirmText="导出"
+        cancelText="取消"
+      />
 
       <Suspense fallback={null}>
         <SettingsModal
