@@ -30,7 +30,7 @@ export default async function handler(req, res) {
     const sql = neon(DATABASE_URL)
 
     try {
-      await sql`CREATE TABLE IF NOT EXISTS users (id SERIAL PRIMARY KEY, username TEXT UNIQUE, password TEXT, created_at TIMESTAMP DEFAULT NOW())`
+      await sql`CREATE TABLE IF NOT EXISTS users (id SERIAL PRIMARY KEY, username TEXT UNIQUE, password TEXT, admin BOOLEAN DEFAULT false, created_at TIMESTAMP DEFAULT NOW())`
 
       const existingUser = await sql`SELECT * FROM users WHERE username = ${username}`.catch(() => null)
 
