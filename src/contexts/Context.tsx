@@ -56,8 +56,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       
       if (response.data.success) {
         setPassword(passwordInput)
+        setAdmin(false) // 新注册用户默认为非管理员
         localStorage.setItem('password', passwordInput)
         localStorage.setItem('username', username)
+        localStorage.setItem('admin', 'false')
         return true
       }
       return false

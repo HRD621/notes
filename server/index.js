@@ -1,4 +1,4 @@
-﻿﻿﻿﻿import 'dotenv/config'
+﻿﻿﻿import 'dotenv/config'
 import express from 'express'
 import path from 'path'
 import { fileURLToPath } from 'url'
@@ -387,7 +387,7 @@ app.post('/api/register', async (req, res) => {
     
     await pool.query('INSERT INTO users (username, password) VALUES ($1, $2)', [username, password])
     await appendLog('info', '用户注册成功', `IP: ${cleanIP(req.ip)}, 用户名: ${username}`)
-    res.json({ success: true })
+    res.json({ success: true, admin: false })
   } catch (e) {
     console.error('注册错误:', e)
     await appendLog('error', '注册错误', `IP: ${cleanIP(req.ip)}, 错误: ${String(e)}`)
