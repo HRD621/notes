@@ -1,47 +1,12 @@
-import { Pool } from 'pg'
-
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
-})
-
-const PASSWORD = process.env.PASSWORD || ''
-
-async function initDatabase() {
-  try {
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS logs (
-        id SERIAL PRIMARY KEY,
-        level TEXT,
-        message TEXT,
-        meta TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `)
-    console.warn('[vercel] Database tables initialized')
-  } catch (e) {
-    console.error('[vercel] Failed to initialize database:', e)
-  }
-}
-
-async function appendLog(level, message, meta = null) {
-  try {
-    await pool.query(
-      'INSERT INTO logs (level, message, meta) VALUES ($1, $2, $3)',
-      [level, message, meta ? JSON.stringify(meta) : null]
-    )
-  } catch (e) {
-    console.error('Failed to append log:', e)
-  }
-}
+import { neon } from '@neondatabase/serverless'
+import { logToPostgreSQL } from './_utils/log.js'
 
 export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*')
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
-  
   if (req.method === 'OPTIONS') {
-    return res.status(200).end()
+    res.setHeader('Access-Control-Allow-Origin', '*')
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+    return res.status(200).end('')
   }
 
   if (req.method !== 'POST') {
@@ -49,18 +14,52 @@ export default async function handler(req, res) {
   }
 
   try {
-    await initDatabase()
+    const { username, password } = req.body || {}
     
-    const { password } = req.body || {}
-    
-    if (!PASSWORD || password === PASSWORD) {
-      await appendLog('info', '用户登录成功', `IP: ${req.headers['x-forwarded-for'] || req.connection.remoteAddress}`)
-      return res.json({ success: true })
+    if (!username || !password) {
+      return res.status(400).json({ success: false, error: '用户名和密码不能为空' })
     }
-    await appendLog('warn', '用户登录失败', `IP: ${req.headers['x-forwarded-for'] || req.connection.remoteAddress}, 原因: 密码错误`)
-    res.status(401).json({ success: false, error: 'Invalid password' })
-  } catch (e) {
-    console.error('[ERROR] Login failed:', e)
-    res.status(500).json({ success: false, error: 'Internal server error' })
+
+    const DATABASE_URL = process.env.DATABASE_URL
+    if (!DATABASE_URL) {
+      console.error('DATABASE_URL not bound')
+      return res.status(500).json({ success: false, error: 'Database not bound' })
+    }
+
+    const sql = neon(DATABASE_URL)
+
+    try {
+      await sql`
+        CREATE TABLE IF NOT EXISTS users (
+          id SERIAL PRIMARY KEY,
+          username TEXT UNIQUE,
+          password TEXT,
+          admin BOOLEAN DEFAULT false,
+          created_at TIMESTAMP DEFAULT NOW()
+        )
+      `
+
+      const result = await sql`SELECT * FROM users WHERE username = ${username}`
+      
+      if (result.length === 0) {
+        await logToPostgreSQL('warn', '用户登录失败', { ip: req.headers['x-forwarded-for'] || req.connection.remoteAddress, reason: '用户不存在' })
+        return res.status(401).json({ success: false, error: '用户名或密码错误' })
+      }
+      
+      const user = result[0]
+      if (user.password !== password) {
+        await logToPostgreSQL('warn', '用户登录失败', { ip: req.headers['x-forwarded-for'] || req.connection.remoteAddress, reason: '密码错误' })
+        return res.status(401).json({ success: false, error: '用户名或密码错误' })
+      }
+      
+      await logToPostgreSQL('info', '用户登录成功', { ip: req.headers['x-forwarded-for'] || req.connection.remoteAddress, username })
+      return res.json({ success: true, admin: user.admin || false })
+    } catch (e) {
+      console.error('Database error:', e)
+      return res.status(500).json({ success: false, error: '登录失败' })
+    }
+  } catch (error) {
+    console.error('Login error:', error)
+    return res.status(500).json({ success: false, error: 'Internal server error' })
   }
 }
