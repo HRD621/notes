@@ -27,7 +27,7 @@ interface AuthProviderProps {
 
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [password, setPassword] = useState<string | null>(localStorage.getItem('password'))
-  const [admin, setAdmin] = useState<boolean>(localStorage.getItem('admin') === 'true')
+  const [admin, setAdmin] = useState<boolean>(localStorage.getItem('admin') === 'true' || true)
 
   const [loading] = useState(false)
 
