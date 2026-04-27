@@ -77,7 +77,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   }
 
   const value: AuthContextType = {
-    isAuthenticated: !!password,
+    isAuthenticated: !!password || !!localStorage.getItem('password'),
     password,
     admin,
     login,
