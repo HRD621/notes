@@ -60,9 +60,14 @@ api.interceptors.response.use(
     return response
   },
   (error: AxiosError) => {
+    // 只有当响应状态码确实是 401 时才重定向
     if (error.response?.status === 401) {
-      localStorage.removeItem('password')
-      window.location.href = '/login'
+      // 检查是否是登录或注册请求，如果是则不重定向
+      const originalRequest = error.config
+      if (!originalRequest?.url?.includes('/api/login') && !originalRequest?.url?.includes('/api/register')) {
+        localStorage.removeItem('password')
+        window.location.href = '/login'
+      }
     }
     return Promise.reject(error)
   }
