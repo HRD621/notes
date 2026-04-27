@@ -75,14 +75,12 @@ export default async function onRequest(context) {
 
       logInfo('register.success', { username }, env)
 
-      return Response.json(
-        { success: true },
-        {
-          headers: {
-            'Access-Control-Allow-Origin': '*',
-          }
+      return new Response(JSON.stringify({ success: true }), {
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
         }
-      )
+      })
     } catch (e) {
       console.error('Database error:', e)
       logError('register.exception', { message: e instanceof Error ? e.message : String(e) }, env)
