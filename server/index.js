@@ -1,4 +1,4 @@
-﻿﻿﻿import 'dotenv/config'
+import 'dotenv/config'
 import express from 'express'
 import path from 'path'
 import { fileURLToPath } from 'url'
@@ -238,7 +238,7 @@ async function getAllNotes(userId, admin = false, targetUserId = null) {
 
 async function getNotesList(userId, admin = false, targetUserId = null) {
   try {
-    let query = 'SELECT id, title, updated_at, user_id FROM notes '
+    let query = 'SELECT id, title, content, created_at, updated_at, user_id FROM notes '
     let params = []
     let paramIndex = 1
     
@@ -258,6 +258,8 @@ async function getNotesList(userId, admin = false, targetUserId = null) {
     return result.rows.map(row => ({
       id: row.id,
       title: row.title || '',
+      content: row.content || '',
+      createdAt: row.created_at?.toISOString() || new Date().toISOString(),
       updatedAt: row.updated_at?.toISOString() || new Date().toISOString(),
       userId: row.user_id
     }))
@@ -385,7 +387,7 @@ app.post('/api/register', async (req, res) => {
       return res.status(400).json({ success: false, error: '用户名已存在' })
     }
     
-    await pool.query('INSERT INTO users (username, password) VALUES ($1, $2)', [username, password])
+    await pool.query('INSERT INTO users (username, password, admin) VALUES ($1, $2, false)', [username, password])
     await appendLog('info', '用户注册成功', `IP: ${cleanIP(req.ip)}, 用户名: ${username}`)
     res.json({ success: true, admin: false })
   } catch (e) {
@@ -465,7 +467,7 @@ app.post('/api/notes', authMiddleware, async (req, res) => {
       [note.id, req.user.id, note.title, note.content, JSON.stringify(note.tags), note.createdAt, note.updatedAt]
     )
     
-  await appendLog('info', '笔记已创建/更新', { id })
+    await appendLog('info', '笔记已创建/更新', { id })
     res.json({ success: true, id })
   } catch (e) {
     await appendLog('error', '创建笔记失败', { error: String(e) })
@@ -498,7 +500,7 @@ app.put('/api/notes/:id', authMiddleware, async (req, res) => {
       [note.title, note.content, JSON.stringify(note.tags), note.updatedAt, note.id, req.user.id]
     )
     
-  await appendLog('info', '笔记已更新', { id })
+    await appendLog('info', '笔记已更新', { id })
     res.json({ success: true })
   } catch (e) {
     await appendLog('error', '更新笔记失败', { error: String(e) })
@@ -510,7 +512,7 @@ app.delete('/api/notes/:id', authMiddleware, async (req, res) => {
   try {
     const id = req.params.id
     await pool.query('DELETE FROM notes WHERE id = $1 AND user_id = $2', [id, req.user.id])
-  await appendLog('info', '笔记已删除', { id })
+    await appendLog('info', '笔记已删除', { id })
     res.json({ success: true })
   } catch (e) {
     await appendLog('error', '删除笔记失败', { error: String(e) })

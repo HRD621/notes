@@ -57,7 +57,7 @@ const Edit: React.FC = () => {
       setNote(state.note)
       setIsNewNote(true)
       setLoading(false)
-      loadNote()
+      // 新笔记不需要加载，因为它还没有保存到数据库中
     } else {
       loadNote()
     }

@@ -23,6 +23,7 @@ interface CardProps {
 }
 
 const Card: React.FC<CardProps> = ({ note, onView, onDelete, onDragStart, onDragEnd, onDragOver, onDrop, className }) => {
+  console.log('[Card] Rendering with note.content:', JSON.stringify(note.content), 'for note id:', note.id)
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString)
@@ -151,6 +152,7 @@ const Card: React.FC<CardProps> = ({ note, onView, onDelete, onDragStart, onDrag
       <div className="flex items-start mb-3">
         <FileText className="h-4 w-4 text-gray-400 mr-2 mt-0.5 flex-shrink-0" />
         <p className="flex-1 min-w-0 text-sm text-gray-600 leading-relaxed overflow-hidden whitespace-nowrap">
+          {console.log('[Card] note.content:', JSON.stringify(note.content)) || null}
           {getPreview(note.content)}
         </p>
       </div>

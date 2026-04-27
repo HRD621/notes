@@ -23,7 +23,11 @@ const List: React.FC = () => {
   const [notes, setNotes] = useState<Note[]>(() => {
     const state = location.state as { notes?: Note[] } | null
     if (state?.notes && Array.isArray(state.notes)) {
-      return state.notes
+      return state.notes.map(n => ({
+        ...n,
+        content: n.content || '',
+        tags: n.tags || []
+      }))
     }
     try {
       const cache = sessionStorage.getItem('notes-cache') || localStorage.getItem('notes-cache')
@@ -40,7 +44,11 @@ const List: React.FC = () => {
   const [filteredNotes, setFilteredNotes] = useState<Note[]>(() => {
     const state = location.state as { notes?: Note[] } | null
     if (state?.notes && Array.isArray(state.notes)) {
-      return state.notes
+      return state.notes.map(n => ({
+        ...n,
+        content: n.content || '',
+        tags: n.tags || []
+      }))
     }
     try {
       const cache = sessionStorage.getItem('notes-cache') || localStorage.getItem('notes-cache')
@@ -77,15 +85,8 @@ const List: React.FC = () => {
 
 
   useEffect(() => {
-    const state = location.state as { notes?: Note[] } | null
-    const hasCache = (state?.notes && state.notes.length > 0) || notes.length > 0
-    if (hasCache) {
-      setTimeout(() => {
-        loadNotesSilently()
-      }, 100)
-    } else {
-      loadNotes()
-    }
+    // 总是调用 loadNotes，确保获取最新的笔记数据，包括 content 字段
+    loadNotes()
     const loadSettingsTitle = () => {
       try {
         const saved = localStorage.getItem('app-settings')
@@ -231,15 +232,21 @@ const List: React.FC = () => {
       setError('')
       
       const response = await notesApi.getNotes()
+      console.log('[List] loadNotes response.data:', JSON.stringify(response.data))
       
       if (Array.isArray(response.data)) {
         // 确保每个笔记都有content字段
-        const notesWithContent = response.data.map(note => ({
-          ...note,
-          content: note.content || '',
-          tags: note.tags || []
-        }))
+        const notesWithContent = response.data.map(note => {
+          console.log('[List] note in map:', JSON.stringify(note))
+          return {
+            ...note,
+            content: note.content || '',
+            tags: note.tags || []
+          }
+        })
+        console.log('[List] notesWithContent:', JSON.stringify(notesWithContent))
         const ordered = await applyOrder(notesWithContent)
+        console.log('[List] ordered before setNotes:', JSON.stringify(ordered))
         setNotes(ordered)
         setFilteredNotes(ordered)
         try {
@@ -290,15 +297,12 @@ const List: React.FC = () => {
       let newNotes: Note[] = []
       
       if (Array.isArray(response.data)) {
-        // 保留现有笔记的content字段，如果没有则使用空字符串
-        newNotes = response.data.map(newNote => {
-          const existingNote = notes.find(n => n.id === newNote.id)
-          return {
-            ...newNote,
-            content: existingNote?.content || newNote.content || '',
-            tags: existingNote?.tags || newNote.tags || []
-          }
-        })
+        // 使用API返回的content字段，如果没有则使用空字符串
+        newNotes = response.data.map(newNote => ({
+          ...newNote,
+          content: newNote.content || '',
+          tags: newNote.tags || []
+        }))
       } else if (response.data && typeof response.data === 'object' && !Array.isArray(response.data)) {
 
         const singleNote = response.data as Note
@@ -313,18 +317,17 @@ const List: React.FC = () => {
       
       const ordered = await applyOrder(newNotes)
 
-      if (JSON.stringify(ordered) !== JSON.stringify(notes)) {
-        setNotes(ordered)
-        setFilteredNotes(ordered)
-        try {
-          const cacheData = JSON.stringify(ordered)
-          sessionStorage.setItem('notes-cache', cacheData)
-        } catch {}
-        await saveNoteOrder(ordered)
-      }
-    } catch (_err: unknown) {
-      console.error('Load notes error (silent):', _err)
-
+      // 总是更新状态，确保内容字段被正确设置
+      setNotes(ordered)
+      setFilteredNotes(ordered)
+      try {
+        const cacheData = JSON.stringify(ordered)
+        sessionStorage.setItem('notes-cache', cacheData)
+      } catch {}
+      await saveNoteOrder(ordered)
+    } catch (err: unknown) {
+      console.error('Load notes error (silent):', err)
+      // 静默加载失败时，只记录错误，不调用loadNotes，避免无限循环
     }
   }
 
@@ -422,9 +425,9 @@ const List: React.FC = () => {
     navigate('/login')
   }
 
-  const handleSearch = (results: Note[]) => {
+  const handleSearch = React.useCallback((results: Note[]) => {
     setFilteredNotes(results)
-  }
+  }, [])
 
   const handleNoteDragStart = (e: React.DragEvent, noteId: string) => {
     setDraggedNoteId(noteId);
@@ -484,6 +487,11 @@ const List: React.FC = () => {
     const mm = String(d.getMinutes()).padStart(2, '0')
     return `${y}-${m}-${dd} ${hh}:${mm}`
   }
+
+  // 检查 notes 状态的变化
+  useEffect(() => {
+    console.log('[List] notes state updated:', JSON.stringify(notes))
+  }, [notes])
 
 
   return (
