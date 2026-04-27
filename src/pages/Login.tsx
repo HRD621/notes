@@ -175,7 +175,6 @@ const Login = () => {
             onSubmit={handleSubmit} 
             data-form={isRegister ? "register" : "login"}
             method="post"
-            action={isRegister ? "/register" : "/login"}
           >
             <div>
               <label htmlFor="username" className="sr-only">
