@@ -111,7 +111,10 @@ const Login = () => {
       }
       
       if (success) {
-        navigate('/notes')
+        // 添加短暂延迟，确保状态更新完成
+        setTimeout(() => {
+          navigate('/notes')
+        }, 100)
       } else {
         setError(isRegister ? '注册失败，请重试' : '用户名或密码错误')
       }
