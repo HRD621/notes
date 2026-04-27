@@ -16,7 +16,10 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
     )
   }
 
-  if (!isAuthenticated) {
+  // 检查 isAuthenticated 状态或 localStorage 中是否存在 password
+  const isLoggedIn = isAuthenticated || !!localStorage.getItem('password')
+
+  if (!isLoggedIn) {
     return <Navigate to="/login" replace />
   }
 
