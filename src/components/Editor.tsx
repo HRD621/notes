@@ -1,6 +1,9 @@
 import React, { useCallback, useRef, useEffect, useState, useMemo } from 'react'
 import SimpleMDE from 'react-simplemde-editor'
 import 'easymde/dist/easymde.min.css'
+import { useEditor, EditorContent } from '@tiptap/react'
+import StarterKit from '@tiptap/starter-kit'
+import 'prosemirror-view/style/prosemirror.css'
 import './Editor.css'
 
 interface CodeMirrorInstance {
@@ -40,6 +43,176 @@ const Editor: React.FC<EditorProps> = ({
   const [isPreview, setIsPreview] = useState(false)
   const [_showScroll, _setShowScroll] = useState(true)
   const [editorInstance, setEditorInstance] = useState<SimpleMDEInstance | null>(null)
+  const [editMode, setEditMode] = useState<'markdown' | 'rich'>('markdown')
+  
+  // 简单的 Markdown 到 HTML 转换
+  const convertMarkdownToHtml = (markdown: string): string => {
+    if (!markdown) return '<p><br /></p>'
+
+    const normalized = markdown.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+    let html = normalized
+
+    // 替换标题
+    html = html.replace(/^# (.*$)/gim, '<h1>$1</h1>')
+    html = html.replace(/^## (.*$)/gim, '<h2>$1</h2>')
+    html = html.replace(/^### (.*$)/gim, '<h3>$1</h3>')
+
+    // 替换粗体
+    html = html.replace(/\*\*(.*?)\*\*/gim, '<strong>$1</strong>')
+
+    // 替换斜体
+    html = html.replace(/\*(.*?)\*/gim, '<em>$1</em>')
+
+    // 替换删除线
+    html = html.replace(/~~(.*?)~~/gim, '<s>$1</s>')
+
+    // 替换代码块
+    html = html.replace(/```([\s\S]*?)```/gim, '<pre><code>$1</code></pre>')
+
+    // 替换引用
+    html = html.replace(/^> (.*$)/gim, '<blockquote>$1</blockquote>')
+
+    // 替换连续的无序列表项
+    html = html.replace(/(^|\n)(- .+(?:\n- .+)*)/gm, (_, prefix, group) => {
+      const items = group.split('\n').map((line: string) => line.replace(/^- /, '').trim())
+      return `${prefix}<ul>${items.map((item: string) => `<li>${item}</li>`).join('')}</ul>`
+    })
+
+    // 替换连续的有序列表项
+    html = html.replace(/(^|\n)(\d+\. .+(?:\n\d+\. .+)*)/gm, (_, prefix, group) => {
+      const items = group.split('\n').map((line: string) => line.replace(/^\d+\. /, '').trim())
+      return `${prefix}<ol>${items.map((item: string) => `<li>${item}</li>`).join('')}</ol>`
+    })
+
+    // 按空行分段落并保留单行换行
+    return html
+      .split(/\n{2,}/g)
+      .map((block) => {
+        const trimmed = block.trim()
+        if (!trimmed) return '<p><br /></p>'
+        if (/^<(h[1-6]|ul|ol|blockquote|pre)>/i.test(trimmed)) {
+          return trimmed
+        }
+        return `<p>${trimmed.replace(/\n/g, '<br>')}</p>`
+      })
+      .join('')
+  }
+  
+  // 简单的 HTML 到 Markdown 转换
+  const convertHtmlToMarkdown = (html: string): string => {
+    if (!html) return ''
+    
+    // 保留段落边界
+    let markdown = html.replace(/<\/p>\s*<p>/gims, '\n\n')
+
+    // 移除段落标签
+    markdown = markdown.replace(/<p>(.*?)<\/p>/gims, '$1')
+    
+    // 替换 <br> 为换行符
+    markdown = markdown.replace(/<br\s*\/?>/gim, '\n')
+    
+    // 替换标题
+    markdown = markdown.replace(/<h1>(.*?)<\/h1>/gim, '# $1')
+    markdown = markdown.replace(/<h2>(.*?)<\/h2>/gim, '## $1')
+    markdown = markdown.replace(/<h3>(.*?)<\/h3>/gim, '### $1')
+    
+    // 替换粗体
+    markdown = markdown.replace(/<strong>(.*?)<\/strong>/gim, '**$1**')
+    
+    // 替换斜体
+    markdown = markdown.replace(/<em>(.*?)<\/em>/gim, '*$1*')
+    
+    // 替换删除线
+    markdown = markdown.replace(/<s>(.*?)<\/s>/gim, '~~$1~~')
+    
+    // 替换代码块
+    markdown = markdown.replace(/<pre><code>(.*?)<\/code><\/pre>/gims, '```$1```')
+    
+    // 替换引用
+    markdown = markdown.replace(/<blockquote>(.*?)<\/blockquote>/gim, '> $1')
+    
+    // 替换无序列表
+    markdown = markdown.replace(/<ul>([\s\S]*?)<\/ul>/gim, (_match: string, inner: string) => {
+      return inner.replace(/<li>(.*?)<\/li>/gim, '- $1\n').trim()
+    })
+    
+    // 替换有序列表
+    markdown = markdown.replace(/<ol>([\s\S]*?)<\/ol>/gim, (_match: string, inner: string) => {
+      let index = 1
+      return inner.replace(/<li>(.*?)<\/li>/gim, (_match: string, content: string) => `${index++}. ${content}\n`).trim()
+    })
+    
+    return markdown.replace(/\n{3,}/g, '\n\n').trim()
+  }
+  
+  const localUpdateRef = useRef(false)
+  const latestValueRef = useRef(value)
+
+  useEffect(() => {
+    latestValueRef.current = value
+  }, [value])
+
+  // Tiptap editor
+  const tiptapEditor = useEditor({
+    extensions: [
+      StarterKit
+    ],
+    content: convertMarkdownToHtml(value), // 转换 Markdown 为 HTML
+    onUpdate: ({ editor }) => {
+      try {
+        // 获取 HTML 内容并转换为 Markdown
+        const html = editor.getHTML()
+        const markdown = convertHtmlToMarkdown(html)
+        // 只有当内容发生变化时才调用 onChange，避免无限循环
+        if (markdown !== latestValueRef.current) {
+          localUpdateRef.current = true
+          // 使用 setTimeout 避免同步更新导致的无限循环
+          setTimeout(() => {
+            onChange(markdown)
+            setTimeout(() => {
+              localUpdateRef.current = false
+            }, 0)
+          }, 0)
+        }
+      } catch (error) {
+        console.warn('获取编辑器内容失败:', error)
+      }
+    },
+    editorProps: {
+      attributes: {
+        class: 'max-w-none min-h-[550px]'
+      },
+      handleKeyDown: () => {
+        // 让 Tiptap 默认处理 Enter 换行，避免光标跳转到错误位置
+        return false
+      }
+    }
+  })
+  
+  // 当编辑模式切换时，确保 Tiptap 编辑器更新内容
+  useEffect(() => {
+    if (editMode === 'rich' && tiptapEditor && !localUpdateRef.current) {
+      const html = convertMarkdownToHtml(value)
+      // 仅在编辑器当前内容与传入内容不同时才同步
+      if (tiptapEditor.getHTML() !== html) {
+        tiptapEditor.commands.setContent(html)
+      }
+      const editorHasFocus = tiptapEditor.view?.hasFocus?.() ?? false
+      if (!editorHasFocus) {
+        tiptapEditor.commands.focus()
+      }
+    }
+  }, [editMode, value, tiptapEditor])
+  
+  // 当内容变化时，确保 Tiptap 编辑器不会因为空内容而闪烁
+  useEffect(() => {
+    if (editMode === 'rich' && tiptapEditor) {
+      // 确保编辑器始终有内容
+      if (!value || value.trim() === '') {
+        tiptapEditor.commands.setContent('<p><br /></p>')
+      }
+    }
+  }, [editMode, value, tiptapEditor])
   
   const getEditor = useCallback(() => {
     if (mdeRef.current && mdeRef.current.simpleMde) {
@@ -58,6 +231,8 @@ const Editor: React.FC<EditorProps> = ({
         const cursor = cm.getCursor()
         cm.setCursor(cursor)
         cm.focus()
+        // 强制刷新光标
+        cm.refresh()
       }, 0)
     }
   }, [onChange, getEditor])
@@ -90,92 +265,147 @@ const Editor: React.FC<EditorProps> = ({
   }, [])
 
   const insertText = useCallback((before: string, after: string) => {
-    let cm: CodeMirrorInstance | null = null
-    
-    const editor = getEditor()
-    if (editor && editor.codemirror) {
-      cm = editor.codemirror
-    }
-    
-    if (!cm && mdeRef.current && mdeRef.current.simpleMde && mdeRef.current.simpleMde.codemirror) {
-      cm = mdeRef.current.simpleMde.codemirror
-    }
-    
-    if (!cm) {
-      const cmElement = document.querySelector('.CodeMirror')
-      if (cmElement && 'CodeMirror' in cmElement) {
-        cm = (cmElement as { CodeMirror: CodeMirrorInstance }).CodeMirror
-      }
-    }
-    
-    if (cm) {
-      cm.focus()
+    if (editMode === 'markdown') {
+      let cm: CodeMirrorInstance | null = null
       
-      const selection = cm.getSelection()
-      const cursor = cm.getCursor()
-      
-      if (selection) {
-        // 检查选中的文本是否已经被标记
-        const isMarked = selection.startsWith(before) && selection.endsWith(after)
-        if (isMarked) {
-          // 如果已经被标记，移除标记
-          const unmarkedText = selection.substring(before.length, selection.length - after.length)
-          cm.replaceSelection(unmarkedText)
-        } else {
-          // 如果没有被标记，添加标记
-          cm.replaceSelection(before + selection + after)
-        }
-      } else {
-        cm.replaceRange(before + after, cursor)
-        const newCursor = {
-          line: cursor.line,
-          ch: cursor.ch + before.length
-        }
-        cm.setCursor(newCursor)
+      const editor = getEditor()
+      if (editor && editor.codemirror) {
+        cm = editor.codemirror
       }
       
-      cm.triggerOnKeyDown(new KeyboardEvent('keydown'))
+      if (!cm && mdeRef.current && mdeRef.current.simpleMde && mdeRef.current.simpleMde.codemirror) {
+        cm = mdeRef.current.simpleMde.codemirror
+      }
       
-      setTimeout(() => {
+      if (!cm) {
+        const cmElement = document.querySelector('.CodeMirror')
+        if (cmElement && 'CodeMirror' in cmElement) {
+          cm = (cmElement as { CodeMirror: CodeMirrorInstance }).CodeMirror
+        }
+      }
+      
+      if (cm) {
         cm.focus()
-        cm.refresh()
-      }, 10)
-    } else {
-      const textarea = document.querySelector('.CodeMirror textarea') as HTMLTextAreaElement
-      if (textarea) {
-        const start = textarea.selectionStart
-        const end = textarea.selectionEnd
-        const selectedText = value.substring(start, end)
         
-        // 检查选中的文本是否已经被标记
-        const isMarked = selectedText.startsWith(before) && selectedText.endsWith(after)
-        let newValue
+        const selection = cm.getSelection()
+        const cursor = cm.getCursor()
         
-        if (isMarked) {
-          // 如果已经被标记，移除标记
-          const unmarkedText = selectedText.substring(before.length, selectedText.length - after.length)
-          newValue = value.substring(0, start) + unmarkedText + value.substring(end)
+        if (selection) {
+          // 检查选中的文本是否已经被标记
+          const isMarked = selection.startsWith(before) && selection.endsWith(after)
+          if (isMarked) {
+            // 如果已经被标记，移除标记
+            const unmarkedText = selection.substring(before.length, selection.length - after.length)
+            cm.replaceSelection(unmarkedText)
+          } else {
+            // 如果没有被标记，添加标记
+            cm.replaceSelection(before + selection + after)
+          }
         } else {
-          // 如果没有被标记，添加标记
-          newValue = value.substring(0, start) + before + selectedText + after + value.substring(end)
+          cm.replaceRange(before + after, cursor)
+          const newCursor = {
+            line: cursor.line,
+            ch: cursor.ch + before.length
+          }
+          cm.setCursor(newCursor)
         }
         
-        onChange(newValue)
+        cm.triggerOnKeyDown(new KeyboardEvent('keydown'))
         
         setTimeout(() => {
-          if (textarea) {
-            const newStart = start + (isMarked ? -before.length : before.length)
-            const newEnd = end + (isMarked ? -after.length : after.length)
-            textarea.focus()
-            textarea.setSelectionRange(newStart, newEnd)
-          }
-        }, 0)
+          cm.focus()
+          cm.refresh()
+        }, 10)
       } else {
-        const newValue = value + before + after
-        onChange(newValue)
+        const textarea = document.querySelector('.CodeMirror textarea') as HTMLTextAreaElement
+        if (textarea) {
+          const start = textarea.selectionStart
+          const end = textarea.selectionEnd
+          const selectedText = value.substring(start, end)
+          
+          // 检查选中的文本是否已经被标记
+          const isMarked = selectedText.startsWith(before) && selectedText.endsWith(after)
+          let newValue
+          
+          if (isMarked) {
+            // 如果已经被标记，移除标记
+            const unmarkedText = selectedText.substring(before.length, selectedText.length - after.length)
+            newValue = value.substring(0, start) + unmarkedText + value.substring(end)
+          } else {
+            // 如果没有被标记，添加标记
+            newValue = value.substring(0, start) + before + selectedText + after + value.substring(end)
+          }
+          
+          onChange(newValue)
+          
+          setTimeout(() => {
+            if (textarea) {
+              const newStart = start + (isMarked ? -before.length : before.length)
+              const newEnd = end + (isMarked ? -after.length : after.length)
+              textarea.focus()
+              textarea.setSelectionRange(newStart, newEnd)
+            }
+          }, 0)
+        } else {
+          const newValue = value + before + after
+          onChange(newValue)
+        }
+      }
+    } else {
+      // 富文本模式下的处理
+      if (tiptapEditor) {
+        tiptapEditor.chain().focus()
+        
+        // 根据 before 和 after 确定要执行的操作
+        if (before === '**' && after === '**') {
+          // 加粗
+          tiptapEditor.chain().focus().toggleMark('bold').run()
+        } else if (before === '*' && after === '*') {
+          // 斜体
+          tiptapEditor.chain().focus().toggleMark('italic').run()
+        } else if (before === '~~' && after === '~~') {
+          // 删除线
+          tiptapEditor.chain().focus().toggleMark('strike').run()
+        } else if (before === '```' && after === '```') {
+          // 代码块
+          tiptapEditor.chain().focus().toggleCodeBlock().run()
+        } else if (before === '> ' && after === '') {
+          // 引用
+          tiptapEditor.chain().focus().toggleBlockquote().run()
+        } else if (before === '# ' && after === '') {
+          // H1 标题
+          tiptapEditor.chain().focus().toggleHeading({ level: 1 }).run()
+        } else if (before === '## ' && after === '') {
+          // H2 标题
+          tiptapEditor.chain().focus().toggleHeading({ level: 2 }).run()
+        } else if (before === '### ' && after === '') {
+          // H3 标题
+          tiptapEditor.chain().focus().toggleHeading({ level: 3 }).run()
+        } else if (before === '- ' && after === '') {
+          // 无序列表
+          tiptapEditor.chain().focus().toggleBulletList().run()
+        } else if (before === '1. ' && after === '') {
+          // 有序列表
+          tiptapEditor.chain().focus().toggleOrderedList().run()
+        } else if (before === '---' && after === '') {
+          // 水平线
+          tiptapEditor.chain().focus().setHorizontalRule().run()
+        } else if (before === '[' && after === '](url)') {
+          // 链接
+          tiptapEditor.chain().focus().setLink({ href: 'url' }).run()
+        } else {
+          // 其他情况，直接插入文本
+          const { from, to } = tiptapEditor.state.selection
+          const selection = tiptapEditor.state.doc.textBetween(from, to)
+          if (selection) {
+            tiptapEditor.chain().focus().insertContent(before + selection + after).run()
+          } else {
+            tiptapEditor.chain().focus().insertContent(before + after).run()
+          }
+        }
       }
     }
-  }, [value, onChange, getEditor])
+  }, [value, onChange, getEditor, editMode, tiptapEditor])
 
   // @ts-expect-error - Unused function, kept for potential future use
   const _togglePreview = useCallback(() => {
@@ -258,18 +488,19 @@ const Editor: React.FC<EditorProps> = ({
       },
       toolbar: false,
       cursorBlinkRate: 530,
-      cursorHeight: 1.2,
+      cursorHeight: 1,
       theme: 'default',
       lineNumbers: false,
       extraKeys,
-      cursorScrollMargin: 0,
+      cursorScrollMargin: 8,
       inputStyle: 'contenteditable' as const,
       direction: 'ltr' as const,
-      rtlMoveVisually: false,
+      rtlMoveVisually: true,
       showCursorWhenSelecting: true,
-      electricChars: false,
-      smartIndent: false,
-      indentUnit: 0,
+      electricChars: true,
+      smartIndent: true,
+      indentUnit: 2,
+      tabSize: 2,
     }
   }, [placeholder, handlePaste])
 
@@ -464,16 +695,107 @@ const Editor: React.FC<EditorProps> = ({
         flexWrap: 'wrap',
         gap: '12px'
       }}>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button
+            onClick={() => setEditMode('markdown')}
+            style={{
+              padding: '6px 12px',
+              borderRadius: '4px',
+              border: '1px solid rgba(255,255,255,0.3)',
+              background: editMode === 'markdown' ? 'rgba(59, 130, 246, 0.8)' : 'rgba(255,255,255,0.1)',
+              color: editMode === 'markdown' ? '#ffffff' : '#1f2937',
+              cursor: 'pointer',
+              fontSize: '14px',
+              transition: 'all 0.2s ease'
+            }}
+          >
+            Markdown
+          </button>
+          <button
+            onClick={() => setEditMode('rich')}
+            style={{
+              padding: '6px 12px',
+              borderRadius: '4px',
+              border: '1px solid rgba(255,255,255,0.3)',
+              background: editMode === 'rich' ? 'rgba(59, 130, 246, 0.8)' : 'rgba(255,255,255,0.1)',
+              color: editMode === 'rich' ? '#ffffff' : '#1f2937',
+              cursor: 'pointer',
+              fontSize: '14px',
+              transition: 'all 0.2s ease'
+            }}
+          >
+            富文本
+          </button>
+        </div>
       </div>
 
       <div style={{ minHeight: '550px' }}>
-        <SimpleMDE
-          ref={mdeRef as React.LegacyRef<HTMLDivElement>}
-          value={value}
-          onChange={handleChange}
-          options={options}
-          key="stable-editor"
-        />
+        {editMode === 'markdown' ? (
+          <SimpleMDE
+            ref={mdeRef as React.LegacyRef<HTMLDivElement>}
+            value={value}
+            onChange={handleChange}
+            options={options}
+            key="stable-editor"
+          />
+        ) : (
+          <div style={{ 
+            minHeight: '550px', 
+            padding: '16px',
+            border: '1px solid rgba(255,255,255,0.2)',
+            borderRadius: '0 0 8px 8px',
+            background: 'rgba(255,255,255,0.95)',
+            position: 'relative'
+          }}>
+            {tiptapEditor && (
+              <EditorContent editor={tiptapEditor} />
+            )}
+            {/* 确保容器有焦点能力 */}
+            <style>{`
+              .ProseMirror {
+                min-height: 550px;
+                position: relative;
+                border: none !important;
+                outline: none !important;
+                line-height: 1.6 !important;
+                white-space: pre-wrap !important;
+                word-wrap: break-word !important;
+                overflow-wrap: break-word !important;
+              }
+              .ProseMirror p,
+              .ProseMirror h1,
+              .ProseMirror h2,
+              .ProseMirror h3,
+              .ProseMirror h4,
+              .ProseMirror h5,
+              .ProseMirror h6,
+              .ProseMirror blockquote,
+              .ProseMirror pre,
+              .ProseMirror ul,
+              .ProseMirror ol,
+              .ProseMirror li {
+                margin: 0 !important;
+                padding: 0 !important;
+              }
+              .ProseMirror p {
+                line-height: 1.6 !important;
+              }
+              .ProseMirror:empty:before {
+                content: ' ';
+                position: absolute;
+                top: 0;
+                left: 0;
+                color: #999;
+              }
+              /* 移除所有可能的边框 */
+              .ProseMirror-focused {
+                border: none !important;
+                outline: none !important;
+                box-shadow: none !important;
+              }
+            `}</style>
+          </div>
+        )}
       </div>
 
       <style>{`
@@ -570,6 +892,26 @@ const Editor: React.FC<EditorProps> = ({
           word-wrap: break-word !important;
           word-break: break-all !important;
           overflow-wrap: break-word !important;
+        }
+        
+        /* Tiptap 样式 */
+        .prose {
+          max-width: 100% !important;
+          white-space: pre-wrap !important;
+        }
+        
+        .prose h1, .prose h2, .prose h3, .prose h4, .prose h5, .prose h6 {
+          margin-top: 1.5em !important;
+          margin-bottom: 0.5em !important;
+        }
+        
+        .prose p {
+          margin-bottom: 1em !important;
+        }
+        
+        .prose ul, .prose ol {
+          margin-left: 1.5em !important;
+          margin-bottom: 1em !important;
         }
       `}</style>
 
