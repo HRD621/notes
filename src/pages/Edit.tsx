@@ -43,25 +43,28 @@ const Edit: React.FC = () => {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
-  const [isNewNote, setIsNewNote] = useState(false)
+  const [isNewNote, setIsNewNote] = useState<boolean>(() => {
+    const state = location.state as { note?: Note; isNew?: boolean } | null
+    return state?.isNew || false
+  })
   const [showSuccessMessage, setShowSuccessMessage] = useState(false)
   const [editorReady] = useState(true)
   const [isExportModalOpen, setIsExportModalOpen] = useState(false)
-  const [mainMarginLeft, setMainMarginLeft] = useState<string>('0px')
+  const [mainMarginLeft, setMainMarginLeft] = useState<string>(window.innerWidth >= 768 ? '153px' : '0px')
   const [isDesktop, setIsDesktop] = useState<boolean>(window.innerWidth >= 768)
 
   useEffect(() => {
+    const state = location.state as { note?: Note; isNew?: boolean } | null
 
-    const state = location.state as { note?: Note; isNew?: boolean }
-    if (state?.note && state?.isNew) {
+    if (state?.note) {
       setNote(state.note)
-      setIsNewNote(true)
+      setIsNewNote(state.isNew || false)
       setLoading(false)
-      // 新笔记不需要加载，因为它还没有保存到数据库中
-    } else {
-      loadNote()
+      return
     }
-    
+
+    loadNote()
+
     const settingsHandler = (event: CustomEvent) => {
       const settings = event.detail
       if (settings && settings.backgroundImageUrl) {
@@ -88,12 +91,12 @@ const Edit: React.FC = () => {
       }
     }
     window.addEventListener('settings-changed', settingsHandler as EventListener)
-    
+
     const updateMainMarginLeft = () => {
       const width = window.innerWidth
       const isDesktopView = width >= 768
       setIsDesktop(isDesktopView)
-      
+
       const toolbar = document.getElementById('custom-toolbar')
       if (isDesktopView) {
         const fallback = '153px'
@@ -109,11 +112,11 @@ const Edit: React.FC = () => {
         setMainMarginLeft('0px')
       }
     }
-    
+
     updateMainMarginLeft()
-    
+
     window.addEventListener('resize', updateMainMarginLeft)
-    
+
     let resizeObserver: ResizeObserver | null = null
     const setupResizeObserver = () => {
       const toolbar = document.getElementById('custom-toolbar')
@@ -127,14 +130,13 @@ const Edit: React.FC = () => {
       }
     }
     setupResizeObserver()
-    
+
     return () => {
       window.removeEventListener('settings-changed', settingsHandler as EventListener)
       window.removeEventListener('resize', updateMainMarginLeft)
       if (resizeObserver) {
         resizeObserver.disconnect()
       }
-      
     }
   }, [id, location.state])
 
@@ -194,6 +196,17 @@ const Edit: React.FC = () => {
     }
   }
 
+  useEffect(() => {
+    if (!note) {
+      sessionStorage.removeItem('note-cache:' + window.location.pathname)
+      return
+    }
+
+    try {
+      sessionStorage.setItem('note-cache:' + window.location.pathname, JSON.stringify(note))
+    } catch {}
+  }, [note])
+
   const handleSave = async () => {
     if (!note) {
       setError('笔记数据不存在')
@@ -210,14 +223,17 @@ const Edit: React.FC = () => {
       setError('')
       
       const noteData = {
+        ...(isNewNote ? { id: note.id } : {}),
         title: note.title || '无标题',
         content: note.content || ''
       }
+      let finalNoteId = note.id
       
       
       if (isNewNote) {
         const response = await notesApi.createNote(noteData)
         const newNoteId = (response.data && response.data.id) ? response.data.id : note.id
+        finalNoteId = newNoteId
         setIsNewNote(false)
         
         try {
@@ -256,13 +272,28 @@ const Edit: React.FC = () => {
         
         return
       } else {
-        await notesApi.updateNote(note.id, noteData)
+        let saveId = note.id
+
+        try {
+          await notesApi.updateNote(saveId, noteData)
+        } catch (updateError: unknown) {
+          const errorWithResponse = updateError as { response?: { status?: number; data?: any } }
+          if (errorWithResponse.response?.status === 404) {
+            // 如果笔记未找到，则尝试作为新笔记创建（可能是页面 state 失效导致）
+            const response = await notesApi.createNote({ id: saveId, ...noteData })
+            saveId = (response.data && response.data.id) ? response.data.id : saveId
+            finalNoteId = saveId
+            setNote(prev => prev ? { ...prev, id: saveId } : prev)
+          } else {
+            throw updateError
+          }
+        }
 
         try {
           localStorage.setItem('note-flash', JSON.stringify({
             action: 'updated',
             title: note.title || '无标题',
-            noteId: note.id,
+            noteId: saveId,
             timestamp: Date.now()
           }))
         } catch {}
@@ -277,20 +308,18 @@ const Edit: React.FC = () => {
       
       setTimeout(() => {
         setShowSuccessMessage(false)
-        navigate(`/notes/${note.id}`, { state: { note: {
-          id: note.id,
-          title: note.title,
-          content: note.content,
-          createdAt: note.createdAt,
-          updatedAt: new Date().toISOString()
-        } } })
-        try {
-          const cacheRaw = sessionStorage.getItem('notes-cache')
-          if (cacheRaw) {
-            const list = JSON.parse(cacheRaw) as Array<{ id: string; title?: string; content?: string; tags?: string[]; createdAt?: string; updatedAt?: string }>
-            const updated = list.map(n => n.id === note.id ? {
-              ...n,
-              title: note.title,
+          navigate(`/notes/${finalNoteId}`, { state: { note: {
+            id: finalNoteId,
+            title: note.title,
+            content: note.content,
+            createdAt: note.createdAt,
+            updatedAt: new Date().toISOString()
+          } } })
+          try {
+            const cacheRaw = sessionStorage.getItem('notes-cache')
+            if (cacheRaw) {
+              const list = JSON.parse(cacheRaw) as Array<{ id: string; title?: string; content?: string; tags?: string[]; createdAt?: string; updatedAt?: string }>
+              const updated = list.map(n => n.id === finalNoteId ? {
               content: note.content,
               updatedAt: new Date().toISOString()
             } : n)
@@ -365,7 +394,7 @@ const Edit: React.FC = () => {
     if (format === 'markdown') {
       downloadFile(content, `${title}.md`, 'text/markdown')
     } else if (format === 'html') {
-      const htmlContent = marked(content)
+      const htmlContent = marked.parse(content, { breaks: true })
       const fullHtml = `<!DOCTYPE html>
 <html>
 <head>
@@ -475,8 +504,8 @@ ${htmlContent}
       </header>
 
       <main style={{ 
-        marginLeft: isDesktop ? mainMarginLeft : '0px',
-        width: isDesktop ? `calc(100% - ${mainMarginLeft})` : '100%'
+        paddingLeft: isDesktop ? mainMarginLeft : '0px',
+        width: '100%'
       }}>
         <div className={`${isDesktop ? 'w-full' : 'max-w-7xl mx-auto'} ${isDesktop ? 'px-0' : 'px-8'} pt-0 pb-[15px]`}>
           {error && (
