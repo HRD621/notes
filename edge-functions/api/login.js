@@ -29,8 +29,17 @@ export default async function onRequest(context) {
   }
 
   try {
-    const { password } = await request.json()
-    const envPassword = env.PASSWORD || ''
+    const { username, password } = await request.json()
+    
+    if (!username || !password) {
+      return new Response(JSON.stringify({ error: "用户名和密码不能为空" }), {
+        status: 400,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+        }
+      })
+    }
     
     const sql = neon(env.DATABASE_URL)
 
@@ -89,15 +98,41 @@ export default async function onRequest(context) {
       )
     `
     
+    await sql`
+      CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
+        username TEXT UNIQUE,
+        password TEXT,
+        admin BOOLEAN DEFAULT false,
+        created_at TIMESTAMP DEFAULT NOW()
+      )
+    `
+    
+    // 插入默认管理员用户（如果不存在）
+    const adminCount = await sql`
+      SELECT COUNT(*) FROM users WHERE username = 'admin'
+    `
+    
+    if (adminCount[0].count === 0) {
+      await sql`
+        INSERT INTO users (username, password, admin) VALUES ('admin', '123456', true)
+      `
+    }
+    
     const ip = getClientIp(context)
     console.warn('[LOGIN] Client IP:', ip)
     
-    if (!envPassword || password === envPassword) {
+    // 查询用户
+    const user = await sql`
+      SELECT * FROM users WHERE username = ${username}
+    `
+    
+    if (user && user.length > 0 && user[0].password === password) {
       try {
         const ipDisplay = ip && ip !== '未知' ? ip : 'EdgeOne CDN'
         await sql`
           INSERT INTO logs (level, message, meta) 
-          VALUES ('info', '用户登录成功', ${'IP: ' + ipDisplay})
+          VALUES ('info', '用户登录成功', ${'IP: ' + ipDisplay + ', 用户名: ' + username})
         `
         console.warn('[LOGIN] Login success logged to Neon database')
       } catch (dbError) {
@@ -108,7 +143,7 @@ export default async function onRequest(context) {
       return new Response(JSON.stringify({ 
         success: true,
         message: 'Login successful',
-        admin: true
+        admin: user[0].admin || false
       }), {
         status: 200,
         headers: {
@@ -122,7 +157,7 @@ export default async function onRequest(context) {
       const ipDisplay = ip && ip !== '未知' ? ip : 'EdgeOne CDN'
       await sql`
         INSERT INTO logs (level, message, meta) 
-        VALUES ('warn', '用户登录失败', ${'IP: ' + ipDisplay + ', 原因: 密码错误'})
+        VALUES ('warn', '用户登录失败', ${'IP: ' + ipDisplay + ', 用户名: ' + username + ', 原因: 用户名或密码错误'})
       `
       console.warn('[LOGIN] Login failure logged to Neon database')
     } catch (dbError) {
@@ -131,7 +166,7 @@ export default async function onRequest(context) {
     }
     
     return new Response(JSON.stringify({ 
-      error: "Invalid password"
+      error: "用户名或密码错误"
     }), {
       status: 401,
       headers: {
