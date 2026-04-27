@@ -28,6 +28,7 @@ interface AuthProviderProps {
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [password, setPassword] = useState<string | null>(localStorage.getItem('password'))
   const [admin, setAdmin] = useState<boolean>(localStorage.getItem('admin') === 'true' || true)
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(!!localStorage.getItem('password'))
 
   const [loading] = useState(false)
 
@@ -39,6 +40,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       if (response.data.success) {
         setPassword(passwordInput)
         setAdmin(response.data.admin || false)
+        setIsAuthenticated(true)
         localStorage.setItem('password', passwordInput)
         localStorage.setItem('username', username)
         localStorage.setItem('admin', (response.data.admin || false).toString())
@@ -57,6 +59,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       if (response.data.success) {
         setPassword(passwordInput)
         setAdmin(false) // 新注册用户默认为非管理员
+        setIsAuthenticated(true)
         localStorage.setItem('password', passwordInput)
         localStorage.setItem('username', username)
         localStorage.setItem('admin', 'false')
@@ -71,13 +74,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const logout = () => {
     setPassword(null)
     setAdmin(false)
+    setIsAuthenticated(false)
     localStorage.removeItem('password')
     localStorage.removeItem('username')
     localStorage.removeItem('admin')
   }
 
   const value: AuthContextType = {
-    isAuthenticated: !!password || !!localStorage.getItem('password'),
+    isAuthenticated,
     password,
     admin,
     login,
