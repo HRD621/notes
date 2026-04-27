@@ -107,7 +107,8 @@ export default async function onRequest(context) {
       
       return new Response(JSON.stringify({ 
         success: true,
-        message: 'Login successful'
+        message: 'Login successful',
+        admin: true
       }), {
         status: 200,
         headers: {
