@@ -26,10 +26,12 @@ export default async function onRequest(context) {
   }
 
   try {
-    const { username, password } = await request.json()
+    const requestBody = await request.json()
+    console.warn('[REGISTER] Request body:', requestBody)
+    const { username, password } = requestBody
 
     if (!username || !password) {
-      logWarn('register.missing_fields', { username }, env)
+      logWarn('register.missing_fields', { username, requestBody }, env)
       return new Response(JSON.stringify({ error: "用户名和密码不能为空" }), {
         status: 400,
         headers: {
