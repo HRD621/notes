@@ -1,4 +1,3 @@
-import { neon } from '@neondatabase/serverless'
 import { logError, logInfo, logWarn } from '../_utils/log.js'
 
 export default async function onRequest(context) {
@@ -41,8 +40,8 @@ export default async function onRequest(context) {
       })
     }
 
-    if (!env.DATABASE_URL) {
-      console.error('DATABASE_URL not bound')
+    if (!env.NOTESD) {
+      console.error('D1 not bound')
       return new Response(JSON.stringify({ error: "Database not bound" }), {
         status: 500,
         headers: {
@@ -52,16 +51,12 @@ export default async function onRequest(context) {
       })
     }
 
-    const sql = neon(env.DATABASE_URL)
-
     try {
-      // 创建用户表（如果不存在）
-      await sql`CREATE TABLE IF NOT EXISTS users (id SERIAL PRIMARY KEY, username TEXT UNIQUE, password TEXT, created_at TIMESTAMP DEFAULT NOW())`
+      await env.NOTESD.exec(`CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE, password TEXT, created_at TEXT)`)
 
-      // 检查用户名是否已存在
-      const existingUser = await sql`SELECT * FROM users WHERE username = ${username}`.catch(() => null)
+      const existingUser = await env.NOTESD.prepare(`SELECT * FROM users WHERE username = ?`).bind(username).first()
 
-      if (existingUser && existingUser.length > 0) {
+      if (existingUser) {
         logWarn('register.username_exists', { username }, env)
         return new Response(JSON.stringify({ error: "用户名已存在" }), {
           status: 400,
@@ -72,8 +67,7 @@ export default async function onRequest(context) {
         })
       }
 
-      // 插入新用户
-      await sql`INSERT INTO users (username, password) VALUES (${username}, ${password})`
+      await env.NOTESD.prepare(`INSERT INTO users (username, password, created_at) VALUES (?, ?, strftime('%Y-%m-%dT%H:%M:%S','now','+8 hours'))`).bind(username, password).run()
 
       logInfo('register.success', { username }, env)
 
