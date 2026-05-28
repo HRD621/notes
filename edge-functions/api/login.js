@@ -1,11 +1,8 @@
-import { neon } from '@neondatabase/serverless'
 import { logError } from '../_utils/log.js'
 
 export default async function onRequest(context) {
   const { request, env } = context
   console.warn('[LOGIN] Edge Function called')
-  console.warn('[LOGIN] Environment variables:', Object.keys(env || {}))
-  console.warn('[LOGIN] Context:', Object.keys(context))
   
   if (request.method === 'OPTIONS') {
     return new Response(null, {
@@ -28,6 +25,17 @@ export default async function onRequest(context) {
     })
   }
 
+  if (!env.NOTESD) {
+    console.error('D1 not bound')
+    return new Response(JSON.stringify({ error: "Database not bound" }), {
+      status: 500,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*',
+      }
+    })
+  }
+
   try {
     const { username, password } = await request.json()
     
@@ -40,101 +48,22 @@ export default async function onRequest(context) {
         }
       })
     }
-    
-    const sql = neon(env.DATABASE_URL)
 
-    const getClientIp = (context) => {
-      const headers = request.headers
-      
-      const ipHeaders = [
-        'cf-connecting-ip',
-        'x-real-ip',
-        'x-forwarded-for',
-        'client-ip',
-        'x-client-ip',
-        'x-edgeone-ip',
-        'x-edge-ip',
-        'x-forwarded-ip',
-        'x-remote-addr',
-        'remote-addr',
-        'true-client-ip',
-        'x-client-ipaddress',
-        'client-address'
-      ]
-      
-      for (const headerName of ipHeaders) {
-        const value = headers.get(headerName)
-        if (value) {
-          if (headerName === 'x-forwarded-for') {
-            const ips = value.split(',').map(ip => ip.trim())
-            return ips[0]
-          }
-          return value
-        }
-      }
-      
-      if (context?.clientIP) {
-        return context.clientIP
-      }
-      
-      if (request?.cf?.connectingIP) {
-        return request.cf.connectingIP
-      }
-      
-      const host = headers.get('host')
-      if (host && host.includes('edgeone')) {
-        return 'EdgeOne CDN'
-      }
-      
-      return '未知'
-    }
-    await sql`
-      CREATE TABLE IF NOT EXISTS logs (
-        id SERIAL PRIMARY KEY,
-        level TEXT,
-        message TEXT,
-        meta TEXT,
-        created_at TIMESTAMP DEFAULT NOW()
-      )
-    `
+    await env.NOTESD.exec(`CREATE TABLE IF NOT EXISTS logs (id INTEGER PRIMARY KEY AUTOINCREMENT, level TEXT, message TEXT, meta TEXT, created_at TEXT)`)
     
-    await sql`
-      CREATE TABLE IF NOT EXISTS users (
-        id SERIAL PRIMARY KEY,
-        username TEXT UNIQUE,
-        password TEXT,
-        admin BOOLEAN DEFAULT false,
-        created_at TIMESTAMP DEFAULT NOW()
-      )
-    `
+    await env.NOTESD.exec(`CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE, password TEXT, admin BOOLEAN DEFAULT false, created_at TEXT)`)
     
-    // 插入默认管理员用户（如果不存在）
-    const adminCount = await sql`
-      SELECT COUNT(*) FROM users WHERE username = 'admin'
-    `
+    const adminCount = await env.NOTESD.prepare(`SELECT COUNT(*) AS count FROM users WHERE username = 'admin'`).first()
     
-    if (adminCount[0].count === 0) {
-      await sql`
-        INSERT INTO users (username, password, admin) VALUES ('admin', '123456', true)
-      `
+    if (!adminCount || adminCount.count === 0) {
+      await env.NOTESD.prepare(`INSERT INTO users (username, password, admin, created_at) VALUES ('admin', '123456', 1, strftime('%Y-%m-%dT%H:%M:%S','now','+8 hours'))`).run()
     }
     
-    const ip = getClientIp(context)
-    console.warn('[LOGIN] Client IP:', ip)
+    const user = await env.NOTESD.prepare(`SELECT * FROM users WHERE username = ?`).bind(username).first()
     
-    // 查询用户
-    const user = await sql`
-      SELECT * FROM users WHERE username = ${username}
-    `
-    
-    if (user && user.length > 0 && user[0].password === password) {
+    if (user && user.password === password) {
       try {
-        const ipDisplay = ip && ip !== '未知' ? ip : 'EdgeOne CDN'
-        await sql`
-          INSERT INTO logs (level, message, meta) 
-          VALUES ('info', '用户登录成功', ${'IP: ' + ipDisplay + ', 用户名: ' + username})
-        `
-        console.warn('[LOGIN] Login success logged to Neon database')
+        await env.NOTESD.prepare(`INSERT INTO logs (level, message, meta, created_at) VALUES ('info', '用户登录成功', ?, strftime('%Y-%m-%dT%H:%M:%S','now','+8 hours'))`).bind('用户名: ' + username).run()
       } catch (dbError) {
         console.error('[LOGIN] Database log failed:', dbError)
         logError('login:log:error', { message: dbError?.message }, env)
@@ -143,7 +72,7 @@ export default async function onRequest(context) {
       return new Response(JSON.stringify({ 
         success: true,
         message: 'Login successful',
-        admin: user[0].admin || false
+        admin: user.admin === 1
       }), {
         status: 200,
         headers: {
@@ -154,12 +83,7 @@ export default async function onRequest(context) {
     }
     
     try {
-      const ipDisplay = ip && ip !== '未知' ? ip : 'EdgeOne CDN'
-      await sql`
-        INSERT INTO logs (level, message, meta) 
-        VALUES ('warn', '用户登录失败', ${'IP: ' + ipDisplay + ', 用户名: ' + username + ', 原因: 用户名或密码错误'})
-      `
-      console.warn('[LOGIN] Login failure logged to Neon database')
+      await env.NOTESD.prepare(`INSERT INTO logs (level, message, meta, created_at) VALUES ('warn', '用户登录失败', ?, strftime('%Y-%m-%dT%H:%M:%S','now','+8 hours'))`).bind('用户名: ' + username + ', 原因: 用户名或密码错误').run()
     } catch (dbError) {
       console.error('[LOGIN] Database log failed:', dbError)
       logError('login:log:error', { message: dbError?.message }, env)

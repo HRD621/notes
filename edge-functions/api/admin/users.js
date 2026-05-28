@@ -1,10 +1,20 @@
-import { neon } from '@neondatabase/serverless'
 import { logError } from '../../_utils/log.js'
 
 export default async function onRequest(context) {
   const { request, env } = context
   console.warn('[USERS] Edge Function called')
   
+  if (!env.NOTESD) {
+    console.error('D1 not bound')
+    return new Response(JSON.stringify({ error: "Database not bound" }), {
+      status: 500,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*',
+      }
+    })
+  }
+
   if (request.method === 'OPTIONS') {
     return new Response(null, {
       status: 200,
@@ -18,35 +28,21 @@ export default async function onRequest(context) {
 
   if (request.method === 'GET') {
     try {
-      const sql = neon(env.DATABASE_URL)
-
-      await sql`
-        CREATE TABLE IF NOT EXISTS users (
-          id SERIAL PRIMARY KEY,
-          username TEXT UNIQUE NOT NULL,
-          admin BOOLEAN DEFAULT false,
-          created_at TIMESTAMP DEFAULT NOW()
-        )
-      `
+      await env.NOTESD.exec(`CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE NOT NULL, password TEXT, admin BOOLEAN DEFAULT false, created_at TEXT)`)
       
-      const userCount = await sql`
-        SELECT COUNT(*) FROM users
-      `
+      const userCount = await env.NOTESD.prepare(`SELECT COUNT(*) AS count FROM users`).first()
       
-      if (userCount[0].count === 0) {
-        await sql`
-          INSERT INTO users (username, admin) VALUES 
-          ('admin', true),
-          ('user1', false),
-          ('user2', false)
-        `
+      if (!userCount || userCount.count === 0) {
+        await env.NOTESD.prepare(`INSERT INTO users (username, password, admin, created_at) VALUES ('admin', '123456', 1, strftime('%Y-%m-%dT%H:%M:%S','now','+8 hours'))`).run()
       }
 
-      const users = await sql`
-        SELECT id, username, admin, created_at 
-        FROM users 
-        ORDER BY created_at DESC
-      `
+      const result = await env.NOTESD.prepare(`SELECT id, username, admin, created_at FROM users ORDER BY created_at DESC`).all()
+      const users = (result.results || []).map(row => ({
+        id: row.id,
+        username: row.username,
+        admin: row.admin === 1,
+        createdAt: row.created_at || new Date().toISOString()
+      }))
 
       return new Response(JSON.stringify(users), {
         status: 200,
@@ -73,7 +69,6 @@ export default async function onRequest(context) {
 
   if (request.method === 'DELETE') {
     try {
-      const sql = neon(env.DATABASE_URL)
       const url = new URL(request.url)
       const pathParts = url.pathname.split('/')
       const userId = parseInt(pathParts[pathParts.length - 1])
@@ -85,7 +80,6 @@ export default async function onRequest(context) {
         })
       }
       
-      // 获取请求头中的用户名
       const username = request.headers.get('x-username')
       if (!username) {
         return new Response(JSON.stringify({ success: false, error: '未授权' }), {
@@ -94,45 +88,41 @@ export default async function onRequest(context) {
         })
       }
       
-      // 检查当前用户是否是管理员
-      const adminCheck = await sql`SELECT admin FROM users WHERE username = ${username}`
-      if (!adminCheck.length || !adminCheck[0].admin) {
+      const adminCheck = await env.NOTESD.prepare(`SELECT admin FROM users WHERE username = ?`).bind(username).first()
+      if (!adminCheck || adminCheck.admin !== 1) {
         return new Response(JSON.stringify({ success: false, error: '权限不足' }), {
           status: 403,
           headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
         })
       }
       
-      if (username === String(userId)) {
+      const currentUser = await env.NOTESD.prepare(`SELECT id FROM users WHERE username = ?`).bind(username).first()
+      if (!currentUser || currentUser.id === userId) {
         return new Response(JSON.stringify({ success: false, error: '不能删除自己' }), {
           status: 400,
           headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
         })
       }
       
-      // 获取目标用户信息
-      const targetUser = await sql`SELECT * FROM users WHERE id = ${userId}`
-      if (!targetUser.length) {
+      const targetUser = await env.NOTESD.prepare(`SELECT username, admin FROM users WHERE id = ?`).bind(userId).first()
+      if (!targetUser) {
         return new Response(JSON.stringify({ success: false, error: '用户不存在' }), {
           status: 404,
           headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
         })
       }
       
-      if (targetUser[0].admin) {
+      if (targetUser.admin === 1) {
         return new Response(JSON.stringify({ success: false, error: '不能删除管理员用户' }), {
           status: 400,
           headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
         })
       }
       
-      // 先删除该用户的笔记
-      await sql`DELETE FROM notes WHERE user_id = ${userId}`
+      await env.NOTESD.prepare(`DELETE FROM notes WHERE user_id = ?`).bind(userId).run()
+      await env.NOTESD.prepare(`DELETE FROM users WHERE id = ?`).bind(userId).run()
       
-      // 删除用户
-      await sql`DELETE FROM users WHERE id = ${userId}`
-      
-      logError('admin:delete_user', { admin: username, deletedUser: targetUser[0].username, userId }, env)
+      logError('admin:delete_user', { admin: username, deletedUser: targetUser.username, userId }, env)
       
       return new Response(JSON.stringify({ success: true, message: '用户删除成功' }), {
         status: 200,
