@@ -1,10 +1,25 @@
-import { neon } from '@neondatabase/serverless'
 import { logToD1 } from '../../_utils/log'
 import type { PagesFunction } from '../../types'
 
 export const onRequest: PagesFunction = async ({ request, env }) => {
   console.warn('[USERS] Edge Function called')
   
+  if (!env.NOTESD) {
+    return new Response(
+      JSON.stringify({
+        error: "Database not bound",
+        message: "⚠️ D1 数据库尚未绑定",
+      }),
+      {
+        status: 500,
+        headers: {
+          "Content-Type": "application/json; charset=utf-8",
+          "Access-Control-Allow-Origin": "*",
+        },
+      }
+    );
+  }
+
   if (request.method === 'OPTIONS') {
     return new Response(null, {
       status: 200,
@@ -18,35 +33,29 @@ export const onRequest: PagesFunction = async ({ request, env }) => {
 
   if (request.method === 'GET') {
     try {
-      if (!env.DATABASE_URL) {
-        console.error('DATABASE_URL not bound')
-        return new Response(JSON.stringify({ error: "Database not bound" }), {
-          status: 500,
-          headers: {
-            'Content-Type': 'application/json',
-            'Access-Control-Allow-Origin': '*',
-          }
-        })
-      }
-
-      const sql = neon(env.DATABASE_URL)
-
-      await sql`
+      await env.NOTESD.exec(`
         CREATE TABLE IF NOT EXISTS users (
-          id SERIAL PRIMARY KEY,
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
           username TEXT UNIQUE NOT NULL,
           password TEXT,
           admin BOOLEAN DEFAULT false,
-          created_at TIMESTAMP DEFAULT NOW()
+          created_at TEXT
         )
-      `
+      `)
 
-      const users = await sql`
-        SELECT id, username, admin, created_at 
-        FROM users 
-        ORDER BY created_at DESC
-      `
+      const result = await env.NOTESD.prepare(
+        `SELECT id, username, admin, created_at FROM users ORDER BY created_at DESC`
+      ).all<{ id: number; username: string; admin: number; created_at: string }>();
 
+      const users = (result.results || []).map(row => ({
+        id: row.id,
+        username: row.username,
+        admin: row.admin === 1,
+        createdAt: row.created_at || new Date().toISOString()
+      }));
+
+      await logToD1(env, 'info', 'admin.users.list', { count: users.length })
+      
       return new Response(JSON.stringify(users), {
         status: 200,
         headers: {
@@ -56,7 +65,7 @@ export const onRequest: PagesFunction = async ({ request, env }) => {
       })
     } catch (error) {
       console.error('[USERS] Error:', error)
-      await logToD1(env, 'error', 'users:get:unhandled', { message: error instanceof Error ? error.message : String(error) })
+      await logToD1(env, 'error', 'admin.users.get.exception', { message: error instanceof Error ? error.message : String(error) })
       return new Response(JSON.stringify({ 
         error: "Internal server error", 
         details: error instanceof Error ? error.message : String(error)
@@ -72,18 +81,6 @@ export const onRequest: PagesFunction = async ({ request, env }) => {
 
   if (request.method === 'DELETE') {
     try {
-      if (!env.DATABASE_URL) {
-        console.error('DATABASE_URL not bound')
-        return new Response(JSON.stringify({ error: "Database not bound" }), {
-          status: 500,
-          headers: {
-            'Content-Type': 'application/json',
-            'Access-Control-Allow-Origin': '*',
-          }
-        })
-      }
-
-      const sql = neon(env.DATABASE_URL)
       const url = new URL(request.url)
       const pathParts = url.pathname.split('/')
       const userId = parseInt(pathParts[pathParts.length - 1])
@@ -103,40 +100,50 @@ export const onRequest: PagesFunction = async ({ request, env }) => {
         })
       }
       
-      const adminCheck = await sql`SELECT admin FROM users WHERE username = ${username}`
-      if (!adminCheck.length || !adminCheck[0].admin) {
+      const adminCheck = await env.NOTESD.prepare(
+        `SELECT admin FROM users WHERE username = ?`
+      ).bind(username).first<{ admin: number }>()
+      
+      if (!adminCheck || adminCheck.admin !== 1) {
         return new Response(JSON.stringify({ success: false, error: '权限不足' }), {
           status: 403,
           headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
         })
       }
       
-      if (username === String(userId)) {
+      const currentUser = await env.NOTESD.prepare(
+        `SELECT id FROM users WHERE username = ?`
+      ).bind(username).first<{ id: number }>()
+      
+      if (!currentUser || currentUser.id === userId) {
         return new Response(JSON.stringify({ success: false, error: '不能删除自己' }), {
           status: 400,
           headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
         })
       }
       
-      const targetUser = await sql`SELECT * FROM users WHERE id = ${userId}`
-      if (!targetUser.length) {
+      const targetUser = await env.NOTESD.prepare(
+        `SELECT username, admin FROM users WHERE id = ?`
+      ).bind(userId).first<{ username: string; admin: number }>()
+      
+      if (!targetUser) {
         return new Response(JSON.stringify({ success: false, error: '用户不存在' }), {
           status: 404,
           headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
         })
       }
       
-      if (targetUser[0].admin) {
+      if (targetUser.admin === 1) {
         return new Response(JSON.stringify({ success: false, error: '不能删除管理员用户' }), {
           status: 400,
           headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
         })
       }
       
-      await sql`DELETE FROM notes WHERE user_id = ${userId}`
-      await sql`DELETE FROM users WHERE id = ${userId}`
+      await env.NOTESD.prepare(`DELETE FROM notes WHERE user_id = ?`).bind(userId).run()
+      await env.NOTESD.prepare(`DELETE FROM users WHERE id = ?`).bind(userId).run()
       
-      await logToD1(env, 'info', 'admin:delete_user', { admin: username, deletedUser: targetUser[0].username, userId })
+      await logToD1(env, 'info', 'admin.users.delete', { admin: username, deletedUser: targetUser.username, userId })
       
       return new Response(JSON.stringify({ success: true, message: '用户删除成功' }), {
         status: 200,
@@ -144,7 +151,7 @@ export const onRequest: PagesFunction = async ({ request, env }) => {
       })
     } catch (error) {
       console.error('[USERS] Delete Error:', error)
-      await logToD1(env, 'error', 'users:delete:unhandled', { message: error instanceof Error ? error.message : String(error) })
+      await logToD1(env, 'error', 'admin.users.delete.exception', { message: error instanceof Error ? error.message : String(error) })
       return new Response(JSON.stringify({ 
         success: false, 
         error: '删除用户失败',
