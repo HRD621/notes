@@ -29,10 +29,8 @@ const Card: React.FC<CardProps> = ({ note, onView, onDelete, onDragStart, onDrag
     const date = new Date(dateString)
     return date.toLocaleDateString('zh-CN', {
       year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
+      month: '2-digit',
+      day: 'numeric'
     })
   }
 
@@ -124,11 +122,6 @@ const Card: React.FC<CardProps> = ({ note, onView, onDelete, onDragStart, onDrag
           <div className="flex items-center mt-1 text-sm text-gray-500">
             <Calendar className="h-4 w-4 mr-1" />
             <span>更新于 {formatDate(note.updatedAt)}</span>
-            {note.userId && (
-              <span className="ml-3 px-2 py-0.5 bg-blue-100 text-blue-800 rounded-full text-xs">
-                用户: {note.userId}
-              </span>
-            )}
           </div>
         </div>
         <div className="flex items-center gap-1 ml-2 opacity-0 group-hover:opacity-100" style={{ transition: 'none' }}>

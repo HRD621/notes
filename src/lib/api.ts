@@ -18,7 +18,7 @@ interface ImportMetaEnv {
 
 export const api = axios.create({
   baseURL: (import.meta as { env?: ImportMetaEnv }).env?.VITE_API_BASE || (import.meta.env.DEV ? 'http://localhost:3000' : ''),
-  timeout: 5000,
+  timeout: 30000,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -96,6 +96,9 @@ export const notesApi = {
     api.post('/api/notes', { content }),
   
   getUsers: (): Promise<AxiosResponse<any[]>> => api.get('/api/admin/users'),
+  
+  deleteUser: (userId: number): Promise<AxiosResponse<ApiResponse>> => 
+    api.delete(`/api/admin/users/${userId}`),
 }
 
 export const authApi = {

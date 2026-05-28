@@ -1,4 +1,4 @@
-﻿import 'dotenv/config'
+﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿import 'dotenv/config'
 import express from 'express'
 import path from 'path'
 import { fileURLToPath } from 'url'
@@ -28,7 +28,7 @@ if (!DATABASE_URL) {
 }
 
 const pool = new Pool({
-  connectionString: DATABASE_URL,
+  connectionString: DATABASE_URL + '?timezone=UTC',
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
   max: 20,
   idleTimeoutMillis: 30000,
@@ -227,7 +227,7 @@ async function getAllNotes(userId, admin = false, targetUserId = null) {
       content: row.content || '',
       tags: safeJsonParse(row.tags, []),
       createdAt: row.created_at?.toISOString() || new Date().toISOString(),
-      updatedAt: row.updated_at?.toISOString() || new Date().toISOString(),
+      updatedAt: row.updated_at ? new Date(row.updated_at).toISOString() : new Date().toISOString(),
       userId: row.user_id
     }))
   } catch (e) {
@@ -254,13 +254,24 @@ async function getNotesList(userId, admin = false, targetUserId = null) {
     
     query += 'ORDER BY updated_at DESC'
     
+    const formatTime = (date) => {
+      if (!date) return new Date().toISOString()
+      const d = new Date(date)
+      const y = d.getFullYear()
+      const m = String(d.getMonth() + 1).padStart(2, '0')
+      const day = String(d.getDate()).padStart(2, '0')
+      const h = String(d.getHours()).padStart(2, '0')
+      const min = String(d.getMinutes()).padStart(2, '0')
+      const sec = String(d.getSeconds()).padStart(2, '0')
+      return `${y}-${m}-${day}T${h}:${min}:${sec}`
+    }
     const result = await pool.query(query, params)
     return result.rows.map(row => ({
       id: row.id,
       title: row.title || '',
       content: row.content || '',
-      createdAt: row.created_at?.toISOString() || new Date().toISOString(),
-      updatedAt: row.updated_at?.toISOString() || new Date().toISOString(),
+      createdAt: formatTime(row.created_at),
+      updatedAt: formatTime(row.updated_at),
       userId: row.user_id
     }))
   } catch (e) {
@@ -374,6 +385,45 @@ app.get('/api/admin/users', authMiddleware, async (req, res) => {
   }
 })
 
+// 删除用户（仅管理员）
+app.delete('/api/admin/users/:id', authMiddleware, async (req, res) => {
+  try {
+    if (!req.user.admin) {
+      return res.status(403).json({ success: false, error: '权限不足' })
+    }
+    
+    const userId = parseInt(req.params.id)
+    if (isNaN(userId)) {
+      return res.status(400).json({ success: false, error: '无效的用户ID' })
+    }
+    
+    if (userId === req.user.id) {
+      return res.status(400).json({ success: false, error: '不能删除自己' })
+    }
+    
+    const targetUser = await pool.query('SELECT * FROM users WHERE id = $1', [userId])
+    if (targetUser.rows.length === 0) {
+      return res.status(404).json({ success: false, error: '用户不存在' })
+    }
+    
+    if (targetUser.rows[0].admin) {
+      return res.status(400).json({ success: false, error: '不能删除管理员用户' })
+    }
+    
+    // 先删除该用户的所有笔记
+    await pool.query('DELETE FROM notes WHERE user_id = $1', [userId])
+    
+    // 删除用户
+    await pool.query('DELETE FROM users WHERE id = $1', [userId])
+    
+    await appendLog('info', '管理员删除用户', { 管理员: req.user.username, 被删除用户: targetUser.rows[0].username, 用户ID: userId })
+    res.json({ success: true, message: '用户删除成功' })
+  } catch (e) {
+    console.error('删除用户错误:', e)
+    res.status(500).json({ success: false, error: '删除用户失败' })
+  }
+})
+
 app.post('/api/register', async (req, res) => {
   const { username, password } = req.body || {}
   
@@ -427,13 +477,24 @@ app.get('/api/notes/:id', authMiddleware, async (req, res) => {
     }
     
     const row = result.rows[0]
+    const formatTime = (date) => {
+      if (!date) return new Date().toISOString()
+      const d = new Date(date)
+      const y = d.getFullYear()
+      const m = String(d.getMonth() + 1).padStart(2, '0')
+      const day = String(d.getDate()).padStart(2, '0')
+      const h = String(d.getHours()).padStart(2, '0')
+      const min = String(d.getMinutes()).padStart(2, '0')
+      const sec = String(d.getSeconds()).padStart(2, '0')
+      return `${y}-${m}-${day}T${h}:${min}:${sec}`
+    }
     const note = {
       id: row.id,
       title: row.title || '',
       content: row.content || '',
       tags: safeJsonParse(row.tags, []),
-      createdAt: row.created_at?.toISOString() || new Date().toISOString(),
-      updatedAt: row.updated_at?.toISOString() || new Date().toISOString(),
+      createdAt: formatTime(row.created_at),
+      updatedAt: formatTime(row.updated_at),
     }
     
     res.json(note)
@@ -452,19 +513,17 @@ app.post('/api/notes', authMiddleware, async (req, res) => {
       title: body.title || '',
       content: body.content || '',
       tags: Array.isArray(body.tags) ? body.tags : [],
-      createdAt: body.createdAt || new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
     }
     
     await pool.query(
       `INSERT INTO notes (id, user_id, title, content, tags, created_at, updated_at) 
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
        ON CONFLICT (id) DO UPDATE SET
        title = EXCLUDED.title,
        content = EXCLUDED.content,
        tags = EXCLUDED.tags,
-       updated_at = EXCLUDED.updated_at`,
-      [note.id, req.user.id, note.title, note.content, JSON.stringify(note.tags), note.createdAt, note.updatedAt]
+       updated_at = NOW()`,
+      [note.id, req.user.id, note.title, note.content, JSON.stringify(note.tags)]
     )
     
     await appendLog('info', '笔记已创建/更新', { id })
@@ -496,8 +555,8 @@ app.put('/api/notes/:id', authMiddleware, async (req, res) => {
     }
     
     await pool.query(
-      'UPDATE notes SET title = $1, content = $2, tags = $3, updated_at = $4 WHERE id = $5 AND user_id = $6',
-      [note.title, note.content, JSON.stringify(note.tags), note.updatedAt, note.id, req.user.id]
+      'UPDATE notes SET title = $1, content = $2, tags = $3, updated_at = NOW() WHERE id = $4 AND user_id = $5',
+      [note.title, note.content, JSON.stringify(note.tags), note.id, req.user.id]
     )
     
     await appendLog('info', '笔记已更新', { id })

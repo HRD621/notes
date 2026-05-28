@@ -107,7 +107,8 @@ const View: React.FC = () => {
   }, [highlightPosition, note?.content, highlightAndScrollToText])
 
   useEffect(() => {
-    if (id && !note) {
+    const stateNote = (location.state as { note?: unknown } | null)?.note
+    if (id && !stateNote && !note) {
       loadNote()
     } else {
       setLoading(false)
@@ -273,12 +274,10 @@ const View: React.FC = () => {
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString)
-    return date.toLocaleString('zh-CN', {
+    return date.toLocaleDateString('zh-CN', {
       year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
+      month: '2-digit',
+      day: 'numeric'
     })
   }
 

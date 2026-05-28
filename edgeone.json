@@ -34,6 +34,9 @@
     "edge-functions/api/login.js": {
       "maxDuration": 30
     },
+    "edge-functions/api/register.js": {
+      "maxDuration": 30
+    },
     "edge-functions/api/notes.js": {
       "maxDuration": 30
     },
@@ -53,6 +56,9 @@
       "maxDuration": 30
     },
     "edge-functions/api/order/[key].js": {
+      "maxDuration": 30
+    },
+    "edge-functions/api/admin/users.js": {
       "maxDuration": 30
     }
   },
