@@ -1381,7 +1381,9 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
         window.dispatchEvent(new CustomEvent('settings-changed', { detail: updatedSettings }))
         }
         
-        localStorage.setItem('app-settings', JSON.stringify(updatedSettings))
+        const currentUsername = localStorage.getItem('username')
+        const settingsKey = currentUsername ? `app-settings-${currentUsername}` : 'app-settings'
+        localStorage.setItem(settingsKey, JSON.stringify(updatedSettings))
         
         setSettings(updatedSettings)
         
