@@ -44,6 +44,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         localStorage.setItem('password', passwordInput)
         localStorage.setItem('username', username)
         localStorage.setItem('admin', (response.data.admin || false).toString())
+        setTimeout(() => window.dispatchEvent(new CustomEvent('apply-user-settings')), 0)
         return true
       }
       return false
@@ -58,11 +59,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       
       if (response.data.success) {
         setPassword(passwordInput)
-        setAdmin(false) // 新注册用户默认为非管理员
+        setAdmin(false)
         setIsAuthenticated(true)
         localStorage.setItem('password', passwordInput)
         localStorage.setItem('username', username)
         localStorage.setItem('admin', 'false')
+        setTimeout(() => window.dispatchEvent(new CustomEvent('apply-user-settings')), 0)
         return true
       }
       return false

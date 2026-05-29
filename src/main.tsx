@@ -64,6 +64,27 @@ function ensureStylesApplied() {
   } else {
     applySavedAppearanceSettings()
   }
+  
+  window.addEventListener('storage', (e) => {
+    if (e.key === 'username' || e.key === null) {
+      setTimeout(applySavedAppearanceSettings, 0)
+    }
+  })
+  
+  window.addEventListener('apply-user-settings', () => {
+    applySavedAppearanceSettings()
+  })
+  
+  const originalSetItem = localStorage.setItem.bind(localStorage)
+  localStorage.setItem = function(key: string, value: string) {
+    originalSetItem(key, value)
+    if (key === 'username') {
+      setTimeout(applySavedAppearanceSettings, 0)
+    }
+    if (key && key.startsWith('app-settings-')) {
+      setTimeout(applySavedAppearanceSettings, 0)
+    }
+  }
 }
 
 
