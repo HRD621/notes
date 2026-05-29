@@ -1368,17 +1368,17 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
           let link = document.querySelector("link[rel='icon']") as HTMLLinkElement | null
           if (!link) {
             link = document.createElement('link')
-          link.rel = 'icon'
+            link.rel = 'icon'
+            link.type = 'image/x-icon'
+            document.head.appendChild(link)
+          }
+          
+          const timestamp = new Date().getTime()
+          const faviconWithTimestamp = `${imageUrl}?t=${timestamp}`
+          link.href = faviconWithTimestamp
           link.type = 'image/x-icon'
-          document.head.appendChild(link)
-        }
-        
-        const timestamp = new Date().getTime()
-        const faviconWithTimestamp = `${imageUrl}?t=${timestamp}`
-        link.href = faviconWithTimestamp
-        link.type = 'image/x-icon'
-        
-        window.dispatchEvent(new CustomEvent('settings-changed', { detail: updatedSettings }))
+          
+          window.dispatchEvent(new CustomEvent('settings-changed', { detail: updatedSettings }))
         }
         
         localStorage.setItem(settingsKey, JSON.stringify(updatedSettings))
