@@ -1381,10 +1381,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
         window.dispatchEvent(new CustomEvent('settings-changed', { detail: updatedSettings }))
         }
         
-        const currentUsername = localStorage.getItem('username')
-        const settingsKey = currentUsername ? `app-settings-${currentUsername}` : 'app-settings'
         localStorage.setItem(settingsKey, JSON.stringify(updatedSettings))
-        
         setSettings(updatedSettings)
         
         modal.showAlert('图片上传成功并已应用！', { 
