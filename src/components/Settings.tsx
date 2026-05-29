@@ -144,10 +144,17 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
   const handleSave = () => {
     const currentUsername = localStorage.getItem('username')
     const settingsKey = currentUsername ? `app-settings-${currentUsername}` : 'app-settings'
-    localStorage.setItem(settingsKey, JSON.stringify(settings))
+    const savedSettings = localStorage.getItem(settingsKey)
+    let currentSettings = settings
+    if (savedSettings) {
+      try {
+        currentSettings = { ...settings, ...JSON.parse(savedSettings) }
+      } catch {}
+    }
+    localStorage.setItem(settingsKey, JSON.stringify(currentSettings))
     try {
       const fontSizeMap: Record<string, string> = { '小': '14px', '中': '16px', '大': '18px', '特大': '20px', '超大': '22px' }
-      const resolvedFontSize = fontSizeMap[settings.fontSize as keyof typeof fontSizeMap] || '14px'
+      const resolvedFontSize = fontSizeMap[currentSettings.fontSize as keyof typeof fontSizeMap] || '14px'
       const resolvedLineHeight = '1.6'
       
       document.documentElement.style.setProperty('--global-font-size', resolvedFontSize)
@@ -157,12 +164,12 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
       document.documentElement.style.setProperty('--editor-line-height', resolvedLineHeight)
       
       loadAndApplyBackground(
-        settings.backgroundImageUrl,
+        currentSettings.backgroundImageUrl,
         () => {},
         () => {}
       )
-      if (typeof settings.logoUrl === 'string') {
-        const href = settings.logoUrl.trim()
+      if (typeof currentSettings.logoUrl === 'string') {
+        const href = currentSettings.logoUrl.trim()
         let link = document.querySelector("link[rel='icon']") as HTMLLinkElement | null
         if (!link) {
           link = document.createElement('link')
@@ -173,7 +180,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
           link.href = href
         }
       }
-      const family = settings.fontFamily
+      const family = currentSettings.fontFamily
       const familyMap: Record<string, string> = {
         '默认': "'Monaco', 'Menlo', 'Ubuntu Mono', monospace",
         '宋体': "'SimSun', 'Songti SC', 'Noto Serif SC', serif",
@@ -188,10 +195,10 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
       }
       const resolvedFamily = familyMap[family] || familyMap['默认']
       document.documentElement.style.setProperty('--editor-font-family', resolvedFamily)
-      if (settings.username && typeof settings.username === 'string') {
-        document.title = settings.username
+      if (currentSettings.username && typeof currentSettings.username === 'string') {
+        document.title = currentSettings.username
       }
-      window.dispatchEvent(new CustomEvent('settings-changed', { detail: settings }))
+      window.dispatchEvent(new CustomEvent('settings-changed', { detail: currentSettings }))
       
       modal.showAlert('外观设置已保存并生效！', { 
         type: 'success',
