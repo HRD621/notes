@@ -49,7 +49,9 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
 
 
   useEffect(() => {
-    const savedSettings = localStorage.getItem('app-settings')
+    const currentUsername = localStorage.getItem('username')
+    const settingsKey = currentUsername ? `app-settings-${currentUsername}` : 'app-settings'
+    const savedSettings = localStorage.getItem(settingsKey)
     if (savedSettings) {
       try {
         const parsedSettings = JSON.parse(savedSettings)
@@ -140,7 +142,9 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
   }
 
   const handleSave = () => {
-    localStorage.setItem('app-settings', JSON.stringify(settings))
+    const currentUsername = localStorage.getItem('username')
+    const settingsKey = currentUsername ? `app-settings-${currentUsername}` : 'app-settings'
+    localStorage.setItem(settingsKey, JSON.stringify(settings))
     try {
       const fontSizeMap: Record<string, string> = { '小': '14px', '中': '16px', '大': '18px', '特大': '20px', '超大': '22px' }
       const resolvedFontSize = fontSizeMap[settings.fontSize as keyof typeof fontSizeMap] || '14px'
@@ -1314,7 +1318,9 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
         const base64 = e.target?.result as string
         const imageUrl = base64
         
-        const savedSettings = localStorage.getItem('app-settings')
+        const currentUsername = localStorage.getItem('username')
+        const settingsKey = currentUsername ? `app-settings-${currentUsername}` : 'app-settings'
+        const savedSettings = localStorage.getItem(settingsKey)
         
         let currentSettings = {}
         if (savedSettings) {

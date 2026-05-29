@@ -89,7 +89,9 @@ const List: React.FC = () => {
     loadNotes()
     const loadSettingsTitle = () => {
       try {
-        const saved = localStorage.getItem('app-settings')
+        const currentUsername = localStorage.getItem('username')
+        const settingsKey = currentUsername ? `app-settings-${currentUsername}` : 'app-settings'
+        const saved = localStorage.getItem(settingsKey)
         if (saved) {
           const parsed = JSON.parse(saved)
           if (parsed.username && typeof parsed.username === 'string') {

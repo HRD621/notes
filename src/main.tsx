@@ -7,7 +7,9 @@ import { loadAndApplyBackground } from './lib/webp'
 
 function applySavedAppearanceSettings() {
   try {
-    const saved = localStorage.getItem('app-settings')
+    const currentUsername = localStorage.getItem('username')
+    const settingsKey = currentUsername ? `app-settings-${currentUsername}` : 'app-settings'
+    const saved = localStorage.getItem(settingsKey)
     if (!saved) return
     const parsed = JSON.parse(saved)
     const fontSizeMap: Record<string, string> = { '小': '14px', '中': '16px', '大': '18px', '特大': '20px', '超大': '22px' }
